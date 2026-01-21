@@ -21,23 +21,16 @@ const DominoTileUI: React.FC<{
   const a = isFlipped ? tile.sideB : tile.sideA;
   const b = isFlipped ? tile.sideA : tile.sideB;
 
-  // No tabuleiro, buchas (duplas) são SEMPRE verticais. Peças normais são horizontais.
   const isBucha = tile.sideA === tile.sideB;
   const finalHorizontal = isBoardPiece ? !isBucha : isHorizontal;
 
   const renderDots = (n: number) => {
     const dotPos = [
-      [],                          // 0
-      [4],                         // 1
-      [0, 8],                      // 2
-      [0, 4, 8],                   // 3
-      [0, 2, 6, 8],                // 4
-      [0, 2, 4, 6, 8],             // 5
-      [0, 2, 3, 5, 6, 8],          // 6
+      [], [4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8],
     ][n];
 
     return (
-      <div className="grid grid-cols-3 grid-rows-3 gap-[1px] w-full h-full p-1">
+      <div className="grid grid-cols-3 grid-rows-3 gap-[1px] w-full h-full p-0.5 sm:p-1">
         {[...Array(9)].map((_, i) => (
           <div key={i} className="flex items-center justify-center">
             {dotPos.includes(i) && (
@@ -54,8 +47,8 @@ const DominoTileUI: React.FC<{
       onClick={!disabled ? onClick : undefined}
       className={`
         relative bg-[#fffdf5] rounded-[2px] border border-[#d8d0c5] flex transition-all duration-200 shrink-0
-        ${!disabled ? 'cursor-pointer hover:brightness-105 hover:-translate-y-1 active:translate-y-0 shadow-md' : 'cursor-default shadow-sm'}
-        ${finalHorizontal ? 'flex-row w-14 h-8 sm:w-18 sm:h-10' : 'flex-col w-8 h-14 sm:w-10 sm:h-18'}
+        ${!disabled ? 'cursor-pointer hover:brightness-105 active:scale-95 shadow-md' : 'cursor-default shadow-sm'}
+        ${finalHorizontal ? 'flex-row w-12 h-7 sm:w-16 sm:h-9 md:w-18 md:h-10' : 'flex-col w-7 h-12 sm:w-9 sm:h-16 md:w-10 md:h-18'}
         ${small ? 'scale-90' : ''}
         ${highlight ? 'ring-2 ring-[#81b64c] ring-offset-1 ring-offset-[#1a1917] z-20' : ''}
       `}
@@ -67,9 +60,7 @@ const DominoTileUI: React.FC<{
       <div className="flex-1 flex items-center justify-center">{renderDots(a)}</div>
       <div className={`${finalHorizontal ? 'w-[2px] h-3/4 my-auto bg-[#cbbda9]' : 'h-[2px] w-3/4 mx-auto bg-[#cbbda9]'}`} />
       <div className="flex-1 flex items-center justify-center">{renderDots(b)}</div>
-      
-      {/* Pino central metálico */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-[#967d4f] rounded-full z-10 border border-[#b8a176] shadow-sm" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 sm:w-1.5 sm:h-1.5 bg-[#967d4f] rounded-full z-10 border border-[#b8a176] shadow-sm" />
     </div>
   );
 };
@@ -86,6 +77,7 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
   const [copyStatus, setCopyStatus] = useState('Convidar');
   const [pendingMove, setPendingMove] = useState<{ tile: DominoTile, options: any[] } | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
 
   const emojis = ['😂', '😎', '🤫', '🎲', '🏆', '🔥', '👏', '🤝'];
 
@@ -132,8 +124,10 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
   }, [roomId]);
 
   useEffect(() => {
-    if (showChat) chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, showChat]);
+    if (boardRef.current && gameState?.board) {
+      boardRef.current.scrollLeft = boardRef.current.scrollWidth;
+    }
+  }, [gameState?.board]);
 
   const createRoom = () => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -156,7 +150,7 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
       return currentData;
     }).then((result) => {
       if (result.committed) setRoomId(id);
-      else { alert("Não foi possível entrar na sala."); setRoomId(null); }
+      else { setRoomId(null); }
     });
   };
 
@@ -196,7 +190,6 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
     if (isWinner) {
       updates.status = 'finished';
       updates.winnerId = currentUser.id;
-      db.ref(`users/${currentUser.id}`).update({ dominoElo: (currentUser.dominoElo || 1200) + 25 });
     }
     db.ref(`domino_rooms/${roomId}`).update(updates);
     setPendingMove(null);
@@ -215,135 +208,131 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
     setChatInput('');
   };
 
-  const shareLink = () => {
-    if (!roomId) return;
-    navigator.clipboard.writeText(`${window.location.origin}/?domino=${roomId}`);
-    setCopyStatus('Copiado!');
-    setTimeout(() => setCopyStatus('Convidar'), 2000);
-  };
+  const isHost = gameState?.players?.[0]?.id === currentUser.id;
+  const myHand = gameState?.hands?.[currentUser.id] || [];
+  const isMyTurn = gameState?.players[gameState?.turnIndex]?.id === currentUser.id;
+  const winner = gameState?.players?.find(p => p.id === gameState.winnerId);
 
   if (!roomId) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-10 p-6 text-center">
+      <div className="flex flex-col items-center justify-center h-full gap-6 p-4 text-center pb-24 md:pb-6">
         <div className="space-y-4">
-            <div className="w-24 h-24 bg-[#81b64c]/10 rounded-full flex items-center justify-center mx-auto mb-6"><i className="fas fa-th-large text-5xl text-[#81b64c]"></i></div>
-            <h1 className="text-5xl font-black italic tracking-tighter text-white">DOMINÓ <span className="text-[#81b64c]">ONLINE</span></h1>
-            <p className="text-gray-400 max-w-md mx-auto">Convide seus amigos para uma partida clássica de dominó.</p>
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-[#81b64c]/10 rounded-full flex items-center justify-center mx-auto mb-4"><i className="fas fa-th-large text-3xl sm:text-4xl text-[#81b64c]"></i></div>
+            <h1 className="text-3xl sm:text-5xl font-black italic tracking-tighter text-white">DOMINÓ <span className="text-[#81b64c]">ONLINE</span></h1>
         </div>
-        <div className="flex flex-col sm:flex-row gap-4 w-full max-w-lg">
-            <button onClick={createRoom} className="flex-1 bg-[#81b64c] py-6 rounded-3xl font-black text-xl shadow-[0_6px_0_#456528] active:translate-y-1 transition-all">CRIAR MESA</button>
-            <div className="flex-1 flex flex-col gap-2">
-                <input id="roomInput" placeholder="CÓDIGO" className="bg-[#262421] border-2 border-[#3c3a37] p-4 rounded-2xl text-center font-bold text-lg uppercase outline-none focus:border-[#81b64c]" />
-                <button onClick={() => { const id = (document.getElementById('roomInput') as HTMLInputElement).value; if(id) joinRoom(id); }} className="bg-[#3c3a37] py-3 rounded-2xl font-bold">ENTRAR</button>
+        <div className="flex flex-col gap-3 w-full max-w-xs">
+            <button onClick={createRoom} className="bg-[#81b64c] py-4 rounded-2xl font-black text-lg shadow-[0_4px_0_#456528] active:translate-y-1">CRIAR MESA</button>
+            <div className="flex gap-2">
+                <input id="roomInput" placeholder="CÓDIGO" className="flex-1 bg-[#262421] border border-[#3c3a37] p-3 rounded-xl text-center font-bold outline-none focus:border-[#81b64c]" />
+                <button onClick={() => { const id = (document.getElementById('roomInput') as HTMLInputElement).value; if(id) joinRoom(id); }} className="bg-[#3c3a37] px-4 rounded-xl font-bold">IR</button>
             </div>
         </div>
       </div>
     );
   }
 
-  const isHost = gameState?.players?.[0]?.id === currentUser.id;
-  const myHand = gameState?.hands?.[currentUser.id] || [];
-  const isMyTurn = gameState?.players?.[gameState.turnIndex]?.id === currentUser.id;
-  const winner = gameState?.players?.find(p => p.id === gameState.winnerId);
-
   return (
-    <div className="flex flex-col h-full w-full max-w-6xl mx-auto p-2 sm:p-4 gap-4 overflow-hidden select-none">
-      <div className="flex justify-between items-center bg-[#262421] p-3 sm:p-4 rounded-3xl border border-white/5 shadow-2xl">
-        <div className="flex items-center gap-3">
-            <div className="bg-[#1a1917] px-4 py-1.5 rounded-xl border border-white/5"><span className="text-[10px] text-gray-500 font-bold block uppercase leading-none tracking-tighter">MESA</span><span className="font-mono text-[#81b64c] font-black text-sm">{roomId}</span></div>
-            <button onClick={shareLink} className="h-9 px-4 rounded-xl text-[10px] font-black uppercase bg-[#3c3a37] hover:bg-[#4a4844]">{copyStatus}</button>
+    <div className="flex flex-col h-full w-full max-w-6xl mx-auto p-2 sm:p-4 gap-2 sm:gap-4 overflow-hidden select-none pb-20 md:pb-4">
+      {/* Header Info */}
+      <div className="flex justify-between items-center bg-[#262421] p-3 rounded-2xl border border-white/5 shadow-xl">
+        <div className="flex items-center gap-2">
+            <div className="bg-[#1a1917] px-3 py-1 rounded-lg border border-white/5"><span className="text-[10px] text-[#81b64c] font-black">{roomId}</span></div>
+            <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/?domino=${roomId}`); setCopyStatus('Copiado!'); setTimeout(() => setCopyStatus('Convidar'), 2000); }} className="h-7 px-3 rounded-lg text-[9px] font-black uppercase bg-[#3c3a37] text-white">{copyStatus}</button>
         </div>
-        <div className="flex gap-2 sm:gap-4 overflow-x-auto pb-1">
+        <div className="flex-1 flex justify-end gap-2 overflow-x-auto px-2 custom-scrollbar">
             {gameState?.players?.map((p, i) => (
-                <div key={p.id} className={`flex items-center gap-3 px-3 py-1.5 rounded-2xl border-2 transition-all shrink-0 ${gameState.turnIndex === i && gameState.status === 'playing' ? 'bg-[#81b64c]/10 border-[#81b64c]' : 'bg-[#1a1917] border-transparent'}`}>
-                    <div className="relative"><img src={p.avatar} className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg shadow-md" />{gameState.turnIndex === i && gameState.status === 'playing' && <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#81b64c] rounded-full border-2 border-[#1a1917] animate-pulse"></div>}</div>
-                    <div className="flex flex-col leading-none"><span className="text-[10px] sm:text-xs font-black truncate max-w-[60px]">{p.name}</span><span className="text-[9px] text-gray-500 font-bold uppercase">{gameState.hands?.[p.id]?.length || 0} PEÇAS</span></div>
+                <div key={p.id} className={`flex items-center gap-2 px-2 py-1 rounded-xl border transition-all shrink-0 ${gameState.turnIndex === i && gameState.status === 'playing' ? 'bg-[#81b64c]/10 border-[#81b64c]' : 'bg-[#1a1917] border-transparent'}`}>
+                    <img src={p.avatar} className="w-5 h-5 rounded shadow-md" />
+                    <span className="text-[9px] font-black truncate max-w-[40px]">{p.name}</span>
                 </div>
             ))}
         </div>
-        <button onClick={() => setShowChat(!showChat)} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors relative ${showChat ? 'bg-[#81b64c] text-white' : 'bg-[#3c3a37] text-gray-400'}`}><i className="fas fa-comments"></i>{!showChat && messages.length > 0 && <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#262421]"></div>}</button>
+        <button onClick={() => setShowChat(!showChat)} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ml-2 ${showChat ? 'bg-[#81b64c] text-white' : 'bg-[#3c3a37] text-gray-400'}`}><i className="fas fa-comments text-xs"></i></button>
       </div>
 
-      <div className="flex-1 flex gap-4 overflow-hidden relative">
-        <div className={`flex-1 ${currentTableBg} rounded-[40px] border-[12px] border-[#262421] relative flex items-center justify-center p-4 overflow-hidden shadow-inner transition-colors duration-500`}>
-           <div className="absolute inset-0 opacity-[0.05] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
-           
+      {/* Table Area */}
+      <div className="flex-1 flex gap-2 overflow-hidden relative">
+        <div className={`flex-1 ${currentTableBg} rounded-[24px] md:rounded-[40px] border-[6px] md:border-[12px] border-[#262421] relative flex items-center justify-center p-2 sm:p-4 overflow-hidden shadow-inner transition-colors duration-500`}>
            {gameState?.status === 'waiting' ? (
-               <div className="text-center z-10 flex flex-col items-center gap-6">
-                  <div className="text-white/30 font-black text-2xl uppercase tracking-[0.2em] animate-pulse">Aguardando...</div>
-                  {isHost && (gameState.players?.length || 0) >= 2 && <button onClick={startNewMatch} className="mt-4 bg-[#81b64c] px-14 py-5 rounded-[2rem] font-black text-2xl shadow-[0_8px_0_#456528] active:translate-y-1">COMEÇAR</button>}
+               <div className="text-center z-10 flex flex-col items-center gap-4">
+                  <div className="text-white/30 font-black text-lg sm:text-2xl uppercase tracking-[0.2em] animate-pulse px-4">Aguardando Players...</div>
+                  {isHost && (gameState.players?.length || 0) >= 2 && <button onClick={startNewMatch} className="mt-2 bg-[#81b64c] px-10 py-3 rounded-xl font-black text-lg shadow-[0_4px_0_#456528] active:translate-y-1">COMEÇAR</button>}
                </div>
            ) : (
-               <div className="flex flex-wrap items-center justify-center gap-0 overflow-auto max-h-full p-8 custom-scrollbar z-10 w-full content-center">
+               <div ref={boardRef} className="flex items-center justify-start sm:justify-center gap-0 overflow-x-auto overflow-y-hidden h-full w-full p-4 sm:p-8 custom-scrollbar z-10 scroll-smooth">
                   {gameState?.board?.map((move, i) => <DominoTileUI key={i} tile={move.tile} isFlipped={move.isFlipped} isBoardPiece />)}
                </div>
            )}
 
            {pendingMove && (
-              <div className="absolute inset-0 bg-black/70 backdrop-blur-md flex flex-col items-center justify-center z-50 animate-in fade-in zoom-in">
-                  <div className="bg-[#262421] p-10 rounded-[3rem] border border-white/10 shadow-2xl text-center max-w-sm w-full mx-4">
-                      <h3 className="text-2xl font-black mb-8 uppercase text-white tracking-tighter">Escolha o Lado</h3>
-                      <div className="flex justify-center items-center gap-10 mb-10">
-                          <div className="flex flex-col items-center gap-4"><DominoTileUI tile={pendingMove.tile} isFlipped={pendingMove.options.find(o => o.side === 'left')?.isFlipped} isHorizontal={true} disabled /><button onClick={() => executeMove(pendingMove.tile, pendingMove.options.find(o => o.side === 'left'))} className="bg-[#3c3a37] hover:bg-[#81b64c] text-white px-6 py-3 rounded-2xl font-bold uppercase text-[10px]">Esquerda</button></div>
-                          <div className="h-20 w-[1px] bg-white/10"></div>
-                          <div className="flex flex-col items-center gap-4"><DominoTileUI tile={pendingMove.tile} isFlipped={pendingMove.options.find(o => o.side === 'right')?.isFlipped} isHorizontal={true} disabled /><button onClick={() => executeMove(pendingMove.tile, pendingMove.options.find(o => o.side === 'right'))} className="bg-[#3c3a37] hover:bg-[#81b64c] text-white px-6 py-3 rounded-2xl font-bold uppercase text-[10px]">Direita</button></div>
+              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-50 p-4">
+                  <div className="bg-[#262421] p-6 rounded-[2rem] border border-white/10 shadow-2xl text-center w-full max-w-xs animate-in zoom-in">
+                      <h3 className="text-lg font-black mb-6 uppercase text-white tracking-tighter">Escolha o Lado</h3>
+                      <div className="flex justify-around items-center gap-4 mb-8">
+                          <div className="flex flex-col items-center gap-3"><DominoTileUI tile={pendingMove.tile} isFlipped={pendingMove.options.find(o => o.side === 'left')?.isFlipped} isHorizontal={true} disabled /><button onClick={() => executeMove(pendingMove.tile, pendingMove.options.find(o => o.side === 'left'))} className="bg-[#3c3a37] px-4 py-2 rounded-lg font-bold uppercase text-[9px]">Esq</button></div>
+                          <div className="flex flex-col items-center gap-3"><DominoTileUI tile={pendingMove.tile} isFlipped={pendingMove.options.find(o => o.side === 'right')?.isFlipped} isHorizontal={true} disabled /><button onClick={() => executeMove(pendingMove.tile, pendingMove.options.find(o => o.side === 'right'))} className="bg-[#3c3a37] px-4 py-2 rounded-lg font-bold uppercase text-[9px]">Dir</button></div>
                       </div>
-                      <button onClick={() => setPendingMove(null)} className="text-gray-500 hover:text-white font-bold text-xs uppercase tracking-widest">Cancelar</button>
+                      <button onClick={() => setPendingMove(null)} className="text-gray-500 font-bold text-[10px] uppercase">Cancelar</button>
                   </div>
               </div>
            )}
 
            {gameState?.status === 'finished' && (
-              <div className="absolute inset-0 bg-[#111]/95 backdrop-blur-lg flex flex-col items-center justify-center z-[60] animate-in fade-in">
-                  <div className="text-[100px] leading-none mb-6">🏆</div>
-                  <h2 className="text-5xl font-black mb-10 text-white uppercase tracking-tighter text-center">{winner?.name} VENCEU!</h2>
-                  <div className="flex gap-4 w-full max-w-md px-6">
-                      {isHost && <button onClick={startNewMatch} className="flex-1 bg-[#81b64c] py-6 rounded-3xl font-black text-xl shadow-[0_6px_0_#456528] active:translate-y-1">REVANCHE</button>}
-                      <button onClick={() => window.location.assign(window.location.origin)} className="flex-1 bg-[#3c3a37] py-6 rounded-3xl font-black text-xl text-gray-400">SAIR</button>
+              <div className="absolute inset-0 bg-[#111]/95 backdrop-blur-lg flex flex-col items-center justify-center z-[60] text-center p-6">
+                  <div className="text-6xl sm:text-8xl mb-4">🏆</div>
+                  <h2 className="text-3xl sm:text-5xl font-black mb-8 text-white uppercase tracking-tighter">{winner?.name} VENCEU!</h2>
+                  <div className="flex flex-col gap-3 w-full max-w-xs">
+                      {isHost && <button onClick={startNewMatch} className="bg-[#81b64c] py-4 rounded-xl font-black text-lg">REVANCHE</button>}
+                      <button onClick={() => window.location.assign(window.location.origin)} className="bg-[#3c3a37] py-3 rounded-xl font-bold text-gray-400 uppercase">Sair</button>
                   </div>
               </div>
            )}
         </div>
 
+        {/* Chat Drawer for Desktop / Overlay for Mobile */}
         {showChat && (
-          <div className="w-72 bg-[#262421] border border-white/5 rounded-[40px] flex flex-col shadow-2xl animate-in slide-in-from-right">
-            <div className="p-4 border-b border-white/5 flex justify-between items-center"><span className="text-xs font-black uppercase tracking-widest text-gray-500">Bate-papo</span><button onClick={() => setShowChat(false)} className="text-gray-600 hover:text-white"><i className="fas fa-times"></i></button></div>
+          <div className="fixed inset-0 md:relative md:inset-auto md:w-72 bg-[#262421] border md:border-white/5 md:rounded-[30px] flex flex-col shadow-2xl z-[150] md:animate-in md:slide-in-from-right">
+            <div className="p-4 border-b border-white/5 flex justify-between items-center"><span className="text-xs font-black uppercase tracking-widest text-gray-500">Bate-papo</span><button onClick={() => setShowChat(false)} className="md:hidden text-gray-600 hover:text-white"><i className="fas fa-times"></i></button></div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
               {messages.map((m, i) => (
                 <div key={i} className={`flex flex-col ${m.user === currentUser.name ? 'items-end' : 'items-start'}`}>
                   <span className="text-[8px] font-black text-gray-600 uppercase mb-1">{m.user}</span>
-                  <div className={`px-3 py-2 rounded-2xl text-[11px] max-w-[90%] break-words ${m.user === currentUser.name ? 'bg-[#81b64c] text-white rounded-tr-none' : 'bg-[#1a1917] text-gray-300 rounded-tl-none'}`}>{m.text}</div>
+                  <div className={`px-3 py-2 rounded-2xl text-[11px] max-w-[85%] break-words ${m.user === currentUser.name ? 'bg-[#81b64c] text-white rounded-tr-none' : 'bg-[#1a1917] text-gray-300 rounded-tl-none'}`}>{m.text}</div>
                 </div>
               ))}
               <div ref={chatEndRef} />
             </div>
-            <div className="p-4 bg-[#1a1917] rounded-b-[40px] space-y-3">
-              <div className="flex justify-between px-1">
+            <div className="p-4 bg-[#1a1917] space-y-3">
+              <div className="flex justify-between px-1 overflow-x-auto gap-2 pb-1">
                 {emojis.map(e => (
-                  <button key={e} onClick={() => sendChatMessage(e)} className="hover:scale-125 transition-transform text-lg">{e}</button>
+                  <button key={e} onClick={() => sendChatMessage(e)} className="hover:scale-125 transition-transform text-lg shrink-0">{e}</button>
                 ))}
               </div>
               <form onSubmit={(e) => { e.preventDefault(); sendChatMessage(chatInput); }} className="flex gap-2">
-                <input 
-                  value={chatInput} 
-                  onChange={e => setChatInput(e.target.value)} 
-                  placeholder="Diga algo..." 
-                  className="flex-1 bg-transparent text-xs outline-none text-gray-300" 
-                />
-                <button type="submit" className="text-[#81b64c]"><i className="fas fa-paper-plane"></i></button>
+                <input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Mensagem..." className="flex-1 bg-[#262421] rounded-lg px-3 py-2 text-xs outline-none text-gray-300" />
+                <button type="submit" className="bg-[#81b64c] w-8 h-8 rounded-lg flex items-center justify-center text-white"><i className="fas fa-paper-plane text-xs"></i></button>
               </form>
             </div>
           </div>
         )}
       </div>
 
-      <div className="bg-[#262421] p-5 sm:p-8 rounded-[40px] border border-white/5 shadow-2xl flex flex-col items-center gap-6 relative">
-         <div className="flex justify-between w-full items-center px-4">
-            <div className="flex items-center gap-6"><div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${isMyTurn ? 'bg-[#81b64c] animate-ping' : 'bg-gray-700'}`}></div><span className={`text-[10px] font-black uppercase tracking-widest ${isMyTurn ? 'text-[#81b64c]' : 'text-gray-600'}`}>{isMyTurn ? 'SUA JOGADA' : 'AGUARDANDO'}</span></div>{isMyTurn && gameState?.status === 'playing' && <button onClick={passTurn} className="bg-red-500/10 text-red-400 text-[10px] px-5 py-2 rounded-full font-black border border-red-500/20 hover:bg-red-500 hover:text-white transition-all">PASSAR VEZ</button>}</div>
-            <div className="hidden sm:flex text-gray-600 font-bold text-[10px] uppercase">SUA MÃO: {myHand.length} PEÇAS</div>
+      {/* Footer / Hand Area */}
+      <div className="bg-[#262421] p-3 sm:p-5 md:p-8 rounded-[24px] md:rounded-[40px] border border-white/5 shadow-2xl flex flex-col gap-3 relative">
+         <div className="flex justify-between w-full items-center px-2">
+            <div className="flex items-center gap-3">
+              <div className={`w-2 h-2 rounded-full ${isMyTurn ? 'bg-[#81b64c] animate-ping' : 'bg-gray-700'}`}></div>
+              <span className={`text-[10px] font-black uppercase tracking-widest ${isMyTurn ? 'text-[#81b64c]' : 'text-gray-600'}`}>{isMyTurn ? 'SUA VEZ' : 'AGUARDE'}</span>
+              {isMyTurn && gameState?.status === 'playing' && <button onClick={passTurn} className="ml-2 bg-red-500/10 text-red-400 text-[8px] px-3 py-1 rounded-full font-black border border-red-500/20 uppercase tracking-tighter">Passar</button>}
+            </div>
+            <div className="text-gray-600 font-bold text-[9px] uppercase">{myHand.length} PEÇAS</div>
          </div>
-         <div className="flex flex-wrap justify-center gap-4 min-h-[120px] items-center px-4 w-full">
-            {myHand.map((tile) => <DominoTileUI key={tile.id} tile={tile} isHorizontal={false} onClick={() => handleTileClick(tile.id)} disabled={!isMyTurn || gameState?.status !== 'playing'} highlight={isMyTurn && canPlayTile(tile, gameState?.board || []).length > 0} />)}
+         <div className="flex items-center justify-start sm:justify-center gap-3 min-h-[90px] overflow-x-auto pb-2 px-1 w-full custom-scrollbar scroll-smooth">
+            {myHand.map((tile) => (
+              <div key={tile.id} className="shrink-0">
+                <DominoTileUI tile={tile} isHorizontal={false} onClick={() => handleTileClick(tile.id)} disabled={!isMyTurn || gameState?.status !== 'playing'} highlight={isMyTurn && canPlayTile(tile, gameState?.board || []).length > 0} />
+              </div>
+            ))}
          </div>
       </div>
     </div>

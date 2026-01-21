@@ -57,7 +57,6 @@ const App: React.FC = () => {
   const [showRanking, setShowRanking] = useState(false);
   const [leaderboard, setLeaderboard] = useState<User[]>([]);
   const [incomingChallenge, setIncomingChallenge] = useState<{from: User, roomId: string} | null>(null);
-  const [rematchStatus, setRematchStatus] = useState<{A: boolean, B: boolean}>({A: false, B: false});
   const [showCelebration, setShowCelebration] = useState(false);
   const lastProcessedTs = useRef<number>(0);
 
@@ -126,64 +125,74 @@ const App: React.FC = () => {
     <div className="flex flex-col md:flex-row h-screen bg-[#312e2b] text-white overflow-hidden">
       <Sidebar user={currentUser} onProfileClick={() => setShowProfileModal(true)} onRankingClick={() => setShowRanking(true)} currentView={currentView} onViewChange={setCurrentView} />
       {showCelebration && <Confetti />}
-      <main className="flex-1 flex flex-col items-center overflow-y-auto pt-4 px-2">
+      
+      <main className="flex-1 flex flex-col items-center overflow-y-auto pt-2 sm:pt-4 px-2 custom-scrollbar">
         {currentView === 'play' && (
-          <div className="flex flex-col lg:flex-row gap-6 w-full max-w-6xl items-center lg:items-start">
+          <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 w-full max-w-6xl items-center lg:items-start pb-24 md:pb-6">
             <div className="w-full max-w-[600px] flex flex-col gap-2 relative">
-              <div className="flex justify-between items-center px-4 py-2 bg-[#262421]/50 rounded border border-white/5">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-[#3c3a37] rounded overflow-hidden flex items-center justify-center relative">{opponent ? <img src={opponent.avatar} className="w-full h-full" /> : <i className="fas fa-robot text-gray-400"></i>}</div>
-                  <div><div className="font-bold text-sm">{opponent?.name || 'Stockfish'}</div><div className="text-[10px] text-gray-500 font-bold uppercase">ELO {opponent?.elo || 1200}</div></div>
+              {/* Opponent Info */}
+              <div className="flex justify-between items-center px-3 py-1.5 bg-[#262421]/50 rounded border border-white/5">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-[#3c3a37] rounded overflow-hidden flex items-center justify-center relative">{opponent ? <img src={opponent.avatar} className="w-full h-full" /> : <i className="fas fa-robot text-gray-400 text-xs"></i>}</div>
+                  <div><div className="font-bold text-[11px] sm:text-sm">{opponent?.name || 'Stockfish'}</div><div className="text-[8px] text-gray-500 font-bold uppercase leading-none">ELO {opponent?.elo || 1200}</div></div>
                 </div>
-                <div className={`px-4 py-1.5 rounded font-mono text-xl ${turn !== playerColor && !gameOver ? 'bg-white text-black font-bold' : 'bg-[#211f1c] text-gray-500'}`}>{Math.floor(timers[playerColor==='w'?'b':'w']/60)}:{(timers[playerColor==='w'?'b':'w']%60).toString().padStart(2,'0')}</div>
+                <div className={`px-3 py-1 rounded font-mono text-sm sm:text-lg ${turn !== playerColor && !gameOver ? 'bg-white text-black font-bold' : 'bg-[#211f1c] text-gray-500'}`}>{Math.floor(timers[playerColor==='w'?'b':'w']/60)}:{(timers[playerColor==='w'?'b':'w']%60).toString().padStart(2,'0')}</div>
               </div>
+              
               <ChessBoard board={board} onMove={handleMove} turn={turn} isFlipped={playerColor==='b'} lastMove={history.length>0?history[history.length-1]:null} gameOver={!!gameOver} settings={currentUser.settings} />
-              <div className="flex justify-between items-center px-4 py-2 bg-[#262421]/50 rounded border border-white/5">
-                <div className="flex items-center gap-3"><img src={currentUser.avatar} className="w-10 h-10 rounded-md cursor-pointer border border-white/10" onClick={() => setShowProfileModal(true)} /><div><div className="font-bold text-sm">{currentUser.name} <span className="text-[9px] text-[#81b64c] ml-1">VOCÊ</span></div><div className="text-[10px] text-[#81b64c] font-bold uppercase">ELO {currentUser.elo}</div></div></div>
-                <div className={`px-4 py-1.5 rounded font-mono text-xl ${turn === playerColor && !gameOver ? 'bg-white text-black font-bold' : 'bg-[#211f1c] text-gray-500'}`}>{Math.floor(timers[playerColor]/60)}:{(timers[playerColor]%60).toString().padStart(2,'0')}</div>
+              
+              {/* User Info */}
+              <div className="flex justify-between items-center px-3 py-1.5 bg-[#262421]/50 rounded border border-white/5">
+                <div className="flex items-center gap-2"><img src={currentUser.avatar} className="w-8 h-8 rounded border border-white/10" /><div><div className="font-bold text-[11px] sm:text-sm">{currentUser.name} <span className="text-[8px] text-[#81b64c] ml-1 font-black">VOCÊ</span></div><div className="text-[8px] text-[#81b64c] font-bold uppercase leading-none">ELO {currentUser.elo}</div></div></div>
+                <div className={`px-3 py-1 rounded font-mono text-sm sm:text-lg ${turn === playerColor && !gameOver ? 'bg-white text-black font-bold' : 'bg-[#211f1c] text-gray-500'}`}>{Math.floor(timers[playerColor]/60)}:{(timers[playerColor]%60).toString().padStart(2,'0')}</div>
               </div>
             </div>
-            <div className="w-full lg:w-[380px] h-[520px]"><GameControls history={history} onUndo={() => {if(gameMode!==GameMode.ONLINE) { boardRef.current=createInitialBoard(); setBoard(boardRef.current); setHistory([]); setTurn('w'); setGameOver(null); }}} onResign={() => setGameOver('Abandonou.')} turn={turn} whiteTimer={timers.w} blackTimer={timers.b} gameMode={gameMode} messages={messages} onlineRoom={onlineRoom} onSendMessage={t => {if(onlineRoom) db.ref(`rooms/${onlineRoom}/chat`).push({user: currentUser.name, text: t, timestamp: Date.now()})}} /></div>
+            
+            {/* Game Controls - No mobile ele fica embaixo do tabuleiro */}
+            <div className="w-full lg:w-[380px] h-[400px] lg:h-[520px]">
+              <GameControls history={history} onUndo={() => {if(gameMode!==GameMode.ONLINE) { boardRef.current=createInitialBoard(); setBoard(boardRef.current); setHistory([]); setTurn('w'); setGameOver(null); }}} onResign={() => setGameOver('Abandonou.')} turn={turn} whiteTimer={timers.w} blackTimer={timers.b} gameMode={gameMode} messages={messages} onlineRoom={onlineRoom} onSendMessage={t => {if(onlineRoom) db.ref(`rooms/${onlineRoom}/chat`).push({user: currentUser.name, text: t, timestamp: Date.now()})}} />
+            </div>
           </div>
         )}
-        {currentView === 'puzzles' && <Puzzles />}
-        {currentView === 'learn' && <Learn />}
+        
+        {currentView === 'puzzles' && <div className="pb-24 md:pb-6 w-full max-w-6xl"><Puzzles /></div>}
+        {currentView === 'learn' && <div className="pb-24 md:pb-6 w-full max-w-6xl"><Learn /></div>}
         {currentView === 'dominoes' && <DominoGame currentUser={currentUser} />}
 
+        {/* Modal Perfil Responsivo */}
         {showProfileModal && (
-          <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[200] p-4 backdrop-blur-sm">
-            <div className="bg-[#262421] p-8 rounded-3xl w-full max-w-2xl border border-white/10 shadow-2xl max-h-[90vh] overflow-y-auto custom-scrollbar">
-              <div className="flex justify-between items-center mb-8"><h2 className="text-3xl font-black italic tracking-tighter text-[#81b64c]">PERSONALIZAÇÃO</h2><button onClick={() => setShowProfileModal(false)} className="text-gray-500 hover:text-white"><i className="fas fa-times text-2xl"></i></button></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+          <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[200] p-0 sm:p-4 backdrop-blur-sm">
+            <div className="bg-[#262421] p-6 sm:p-8 rounded-none sm:rounded-3xl h-full sm:h-auto w-full max-w-2xl border border-white/10 shadow-2xl overflow-y-auto custom-scrollbar">
+              <div className="flex justify-between items-center mb-6 sm:mb-8"><h2 className="text-xl sm:text-3xl font-black italic tracking-tighter text-[#81b64c]">PERFIL E TEMAS</h2><button onClick={() => setShowProfileModal(false)} className="text-gray-500 hover:text-white"><i className="fas fa-times text-xl"></i></button></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-10">
                 <div className="space-y-6">
-                    <div className="flex flex-col items-center gap-4 bg-[#1a1917] p-6 rounded-2xl border border-white/5"><img src={currentUser.avatar} className="w-24 h-24 rounded-2xl border-4 border-[#81b64c] shadow-2xl" /><button onClick={() => setCurrentUser({...currentUser, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${Math.random()}`})} className="bg-[#3c3a37] px-6 py-2 rounded-xl text-xs font-bold uppercase hover:bg-[#4a4844]">Novo Avatar</button></div>
-                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-gray-500 tracking-widest ml-1">Seu Nome</label><input value={currentUser.name} onChange={e => setCurrentUser({...currentUser, name: e.target.value})} className="w-full bg-[#1a1917] border border-white/5 p-4 rounded-xl outline-none focus:border-[#81b64c] font-bold text-sm" /></div>
+                    <div className="flex flex-col items-center gap-4 bg-[#1a1917] p-6 rounded-2xl border border-white/5"><img src={currentUser.avatar} className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border-2 border-[#81b64c] shadow-2xl" /><button onClick={() => setCurrentUser({...currentUser, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${Math.random()}`})} className="bg-[#3c3a37] px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#4a4844]">Mudar Avatar</button></div>
+                    <div className="space-y-2"><label className="text-[10px] font-black uppercase text-gray-500 tracking-widest ml-1">Nickname</label><input value={currentUser.name} onChange={e => setCurrentUser({...currentUser, name: e.target.value})} className="w-full bg-[#1a1917] border border-white/5 p-3 rounded-xl outline-none focus:border-[#81b64c] font-bold text-sm" /></div>
                 </div>
-                <div className="space-y-8">
+                <div className="space-y-6">
                     <div>
-                        <label className="text-[10px] font-black uppercase text-[#81b64c] tracking-[0.2em] block mb-4">Tabuleiro de Xadrez</label>
-                        <div className="grid grid-cols-2 gap-3">
+                        <label className="text-[10px] font-black uppercase text-[#81b64c] tracking-[0.2em] block mb-3">Tema Xadrez</label>
+                        <div className="grid grid-cols-2 gap-2">
                             {['green', 'wood', 'blue', 'gray'].map(t => (
-                                <button key={t} onClick={() => updateSettings({ chessTheme: t as any })} className={`p-3 rounded-xl border-2 transition-all capitalize text-xs font-bold ${currentUser.settings?.chessTheme === t ? 'border-[#81b64c] bg-[#81b64c]/10' : 'border-white/5 bg-[#1a1917]'}`}>{t}</button>
+                                <button key={t} onClick={() => updateSettings({ chessTheme: t as any })} className={`py-2 px-3 rounded-xl border transition-all capitalize text-[10px] font-black ${currentUser.settings?.chessTheme === t ? 'border-[#81b64c] bg-[#81b64c]/10 text-[#81b64c]' : 'border-white/5 bg-[#1a1917] text-gray-500'}`}>{t}</button>
                             ))}
                         </div>
                     </div>
                     <div>
-                        <label className="text-[10px] font-black uppercase text-[#81b64c] tracking-[0.2em] block mb-4">Mesa de Dominó</label>
-                        <div className="grid grid-cols-2 gap-3">
+                        <label className="text-[10px] font-black uppercase text-[#81b64c] tracking-[0.2em] block mb-3">Mesa Dominó</label>
+                        <div className="grid grid-cols-2 gap-2">
                             {['felt', 'wood', 'dark', 'blue'].map(t => (
-                                <button key={t} onClick={() => updateSettings({ dominoTheme: t as any })} className={`p-3 rounded-xl border-2 transition-all capitalize text-xs font-bold ${currentUser.settings?.dominoTheme === t ? 'border-[#81b64c] bg-[#81b64c]/10' : 'border-white/5 bg-[#1a1917]'}`}>{t}</button>
+                                <button key={t} onClick={() => updateSettings({ dominoTheme: t as any })} className={`py-2 px-3 rounded-xl border transition-all capitalize text-[10px] font-black ${currentUser.settings?.dominoTheme === t ? 'border-[#81b64c] bg-[#81b64c]/10 text-[#81b64c]' : 'border-white/5 bg-[#1a1917] text-gray-500'}`}>{t}</button>
                             ))}
                         </div>
                     </div>
                 </div>
               </div>
-              <button onClick={() => setShowProfileModal(false)} className="w-full bg-[#81b64c] py-5 rounded-2xl font-black text-xl mt-10 shadow-[0_6px_0_#456528] active:translate-y-1 transition-all">SALVAR ALTERAÇÕES</button>
+              <button onClick={() => setShowProfileModal(false)} className="w-full bg-[#81b64c] py-4 rounded-xl font-black text-lg mt-8 shadow-lg active:scale-95 transition-all">SALVAR TUDO</button>
             </div>
           </div>
         )}
       </main>
-      <style>{`.confetti-piece { position: absolute; top: -20px; animation: confetti-fall linear forwards; } @keyframes confetti-fall { 0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: 0; } }`}</style>
     </div>
   );
 };
