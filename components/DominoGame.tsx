@@ -21,9 +21,9 @@ const DominoTileUI: React.FC<{
   const a = isFlipped ? tile.sideB : tile.sideA;
   const b = isFlipped ? tile.sideA : tile.sideB;
 
-  // Determina se é uma bucha para forçar vertical no tabuleiro
+  // No tabuleiro, buchas (duplas) são SEMPRE verticais. Peças normais são horizontais.
   const isBucha = tile.sideA === tile.sideB;
-  const finalHorizontal = isBoardPiece ? (isBucha ? false : true) : isHorizontal;
+  const finalHorizontal = isBoardPiece ? !isBucha : isHorizontal;
 
   const renderDots = (n: number) => {
     const dotPos = [
@@ -37,7 +37,7 @@ const DominoTileUI: React.FC<{
     ][n];
 
     return (
-      <div className="grid grid-cols-3 grid-rows-3 gap-[1px] w-full h-full p-1 sm:p-1.5">
+      <div className="grid grid-cols-3 grid-rows-3 gap-[1px] w-full h-full p-1">
         {[...Array(9)].map((_, i) => (
           <div key={i} className="flex items-center justify-center">
             {dotPos.includes(i) && (
@@ -53,23 +53,23 @@ const DominoTileUI: React.FC<{
     <div 
       onClick={!disabled ? onClick : undefined}
       className={`
-        relative bg-[#fffdf5] rounded-[4px] border border-[#d8d0c5] flex transition-all duration-200
-        ${!disabled ? 'cursor-pointer hover:brightness-105 hover:-translate-y-1 active:translate-y-0 shadow-lg' : 'cursor-default shadow-md'}
-        ${finalHorizontal ? 'flex-row w-14 h-9 sm:w-20 sm:h-12' : 'flex-col w-9 h-14 sm:w-12 sm:h-20'}
-        ${small && !isBucha ? 'scale-75 origin-center' : ''}
-        ${small && isBucha ? 'scale-90 origin-center' : ''}
-        ${highlight ? 'ring-2 ring-[#81b64c] ring-offset-2 ring-offset-[#1a1917] z-20' : ''}
+        relative bg-[#fffdf5] rounded-[2px] border border-[#d8d0c5] flex transition-all duration-200 shrink-0
+        ${!disabled ? 'cursor-pointer hover:brightness-105 hover:-translate-y-1 active:translate-y-0 shadow-md' : 'cursor-default shadow-sm'}
+        ${finalHorizontal ? 'flex-row w-14 h-8 sm:w-18 sm:h-10' : 'flex-col w-8 h-14 sm:w-10 sm:h-18'}
+        ${small ? 'scale-90' : ''}
+        ${highlight ? 'ring-2 ring-[#81b64c] ring-offset-1 ring-offset-[#1a1917] z-20' : ''}
       `}
       style={{
         backgroundImage: 'linear-gradient(145deg, #ffffff 0%, #f4eee1 60%, #e2d8c7 100%)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 2px 2px 4px rgba(0,0,0,0.3)',
+        boxShadow: isBoardPiece ? '1px 1px 3px rgba(0,0,0,0.4)' : '0 4px 6px rgba(0,0,0,0.2)',
       }}
     >
       <div className="flex-1 flex items-center justify-center">{renderDots(a)}</div>
-      <div className={`${finalHorizontal ? 'w-[2.5px] h-3/4 my-auto bg-[#cbbda9] shadow-sm' : 'h-[2.5px] w-3/4 mx-auto bg-[#cbbda9] shadow-sm'}`} />
+      <div className={`${finalHorizontal ? 'w-[2px] h-3/4 my-auto bg-[#cbbda9]' : 'h-[2px] w-3/4 mx-auto bg-[#cbbda9]'}`} />
       <div className="flex-1 flex items-center justify-center">{renderDots(b)}</div>
       
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-[#967d4f] rounded-full shadow-sm z-10 border border-[#b8a176]" />
+      {/* Pino central metálico */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-[#967d4f] rounded-full z-10 border border-[#b8a176] shadow-sm" />
     </div>
   );
 };
@@ -87,21 +87,16 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
   const [pendingMove, setPendingMove] = useState<{ tile: DominoTile, options: any[] } | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const emojis = ['😂', '😎', '🤫', '🎲', '🏆', '🔥', '👏', '🤝'];
+
   const tableThemes = {
     felt: 'bg-[#1a4a2a]',
     wood: 'bg-[#3d2b1f]',
     dark: 'bg-[#1a1917]',
     blue: 'bg-[#1b2b3a]',
   };
-  const tableBorderThemes = {
-    felt: 'border-[#12361e]',
-    wood: 'border-[#2d1e15]',
-    dark: 'border-[#262421]',
-    blue: 'border-[#141f2a]',
-  };
-
+  
   const currentTableBg = tableThemes[currentUser.settings?.dominoTheme || 'felt'];
-  const currentTableBorder = tableBorderThemes[currentUser.settings?.dominoTheme || 'felt'];
 
   useEffect(() => {
     if (roomId) joinRoom(roomId);
@@ -214,10 +209,9 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
     db.ref(`domino_rooms/${roomId}`).update({ turnIndex: nextTurn });
   };
 
-  const sendChatMessage = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!chatInput.trim() || !roomId) return;
-    db.ref(`domino_rooms/${roomId}/chat`).push({ user: currentUser.name, text: chatInput, timestamp: Date.now() });
+  const sendChatMessage = (text: string) => {
+    if (!text.trim() || !roomId) return;
+    db.ref(`domino_rooms/${roomId}/chat`).push({ user: currentUser.name, text: text.trim(), timestamp: Date.now() });
     setChatInput('');
   };
 
@@ -271,23 +265,24 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
       </div>
 
       <div className="flex-1 flex gap-4 overflow-hidden relative">
-        <div className={`flex-1 ${currentTableBg} rounded-[40px] sm:rounded-[56px] border-[8px] sm:border-[14px] ${currentTableBorder} relative flex items-center justify-center p-6 sm:p-12 overflow-hidden shadow-inner group transition-colors duration-500`}>
+        <div className={`flex-1 ${currentTableBg} rounded-[40px] border-[12px] border-[#262421] relative flex items-center justify-center p-4 overflow-hidden shadow-inner transition-colors duration-500`}>
            <div className="absolute inset-0 opacity-[0.05] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+           
            {gameState?.status === 'waiting' ? (
                <div className="text-center z-10 flex flex-col items-center gap-6">
-                  <div className="text-white/40 font-black text-2xl sm:text-3xl uppercase tracking-[0.2em] animate-pulse">Aguardando Oponentes...</div>
-                  {isHost && (gameState.players?.length || 0) >= 2 && <button onClick={startNewMatch} className="mt-4 bg-[#81b64c] px-14 py-5 rounded-[2rem] font-black text-2xl shadow-[0_8px_0_#456528] active:translate-y-1">COMEÇAR JOGO</button>}
+                  <div className="text-white/30 font-black text-2xl uppercase tracking-[0.2em] animate-pulse">Aguardando...</div>
+                  {isHost && (gameState.players?.length || 0) >= 2 && <button onClick={startNewMatch} className="mt-4 bg-[#81b64c] px-14 py-5 rounded-[2rem] font-black text-2xl shadow-[0_8px_0_#456528] active:translate-y-1">COMEÇAR</button>}
                </div>
            ) : (
-               <div className="flex flex-wrap items-center justify-center gap-0.5 sm:gap-1 overflow-auto max-h-full p-4 sm:p-10 custom-scrollbar z-10 w-full content-center">
-                  {gameState?.board?.map((move, i) => <DominoTileUI key={i} tile={move.tile} isFlipped={move.isFlipped} isHorizontal={true} small disabled isBoardPiece />)}
+               <div className="flex flex-wrap items-center justify-center gap-0 overflow-auto max-h-full p-8 custom-scrollbar z-10 w-full content-center">
+                  {gameState?.board?.map((move, i) => <DominoTileUI key={i} tile={move.tile} isFlipped={move.isFlipped} isBoardPiece />)}
                </div>
            )}
 
            {pendingMove && (
-              <div className="absolute inset-0 bg-black/70 backdrop-blur-md flex flex-col items-center justify-center z-50 animate-in fade-in zoom-in duration-300">
+              <div className="absolute inset-0 bg-black/70 backdrop-blur-md flex flex-col items-center justify-center z-50 animate-in fade-in zoom-in">
                   <div className="bg-[#262421] p-10 rounded-[3rem] border border-white/10 shadow-2xl text-center max-w-sm w-full mx-4">
-                      <h3 className="text-2xl font-black mb-8 uppercase text-white">Escolha o Lado</h3>
+                      <h3 className="text-2xl font-black mb-8 uppercase text-white tracking-tighter">Escolha o Lado</h3>
                       <div className="flex justify-center items-center gap-10 mb-10">
                           <div className="flex flex-col items-center gap-4"><DominoTileUI tile={pendingMove.tile} isFlipped={pendingMove.options.find(o => o.side === 'left')?.isFlipped} isHorizontal={true} disabled /><button onClick={() => executeMove(pendingMove.tile, pendingMove.options.find(o => o.side === 'left'))} className="bg-[#3c3a37] hover:bg-[#81b64c] text-white px-6 py-3 rounded-2xl font-bold uppercase text-[10px]">Esquerda</button></div>
                           <div className="h-20 w-[1px] bg-white/10"></div>
@@ -299,9 +294,9 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
            )}
 
            {gameState?.status === 'finished' && (
-              <div className="absolute inset-0 bg-[#111]/95 backdrop-blur-lg flex flex-col items-center justify-center z-[60] animate-in fade-in duration-700">
+              <div className="absolute inset-0 bg-[#111]/95 backdrop-blur-lg flex flex-col items-center justify-center z-[60] animate-in fade-in">
                   <div className="text-[100px] leading-none mb-6">🏆</div>
-                  <h2 className="text-5xl font-black mb-10 text-white uppercase tracking-tighter">{winner?.name} VENCEU!</h2>
+                  <h2 className="text-5xl font-black mb-10 text-white uppercase tracking-tighter text-center">{winner?.name} VENCEU!</h2>
                   <div className="flex gap-4 w-full max-w-md px-6">
                       {isHost && <button onClick={startNewMatch} className="flex-1 bg-[#81b64c] py-6 rounded-3xl font-black text-xl shadow-[0_6px_0_#456528] active:translate-y-1">REVANCHE</button>}
                       <button onClick={() => window.location.assign(window.location.origin)} className="flex-1 bg-[#3c3a37] py-6 rounded-3xl font-black text-xl text-gray-400">SAIR</button>
@@ -322,7 +317,22 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
               ))}
               <div ref={chatEndRef} />
             </div>
-            <form onSubmit={sendChatMessage} className="p-4 bg-[#1a1917] rounded-b-[40px] flex gap-2"><input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Diga algo..." className="flex-1 bg-transparent text-xs outline-none text-gray-300" /><button type="submit" className="text-[#81b64c]"><i className="fas fa-paper-plane"></i></button></form>
+            <div className="p-4 bg-[#1a1917] rounded-b-[40px] space-y-3">
+              <div className="flex justify-between px-1">
+                {emojis.map(e => (
+                  <button key={e} onClick={() => sendChatMessage(e)} className="hover:scale-125 transition-transform text-lg">{e}</button>
+                ))}
+              </div>
+              <form onSubmit={(e) => { e.preventDefault(); sendChatMessage(chatInput); }} className="flex gap-2">
+                <input 
+                  value={chatInput} 
+                  onChange={e => setChatInput(e.target.value)} 
+                  placeholder="Diga algo..." 
+                  className="flex-1 bg-transparent text-xs outline-none text-gray-300" 
+                />
+                <button type="submit" className="text-[#81b64c]"><i className="fas fa-paper-plane"></i></button>
+              </form>
+            </div>
           </div>
         )}
       </div>
@@ -333,10 +343,9 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
             <div className="hidden sm:flex text-gray-600 font-bold text-[10px] uppercase">SUA MÃO: {myHand.length} PEÇAS</div>
          </div>
          <div className="flex flex-wrap justify-center gap-4 min-h-[120px] items-center px-4 w-full">
-            {myHand.map((tile) => <DominoTileUI key={tile.id} tile={tile} onClick={() => handleTileClick(tile.id)} disabled={!isMyTurn || gameState?.status !== 'playing'} highlight={isMyTurn && canPlayTile(tile, gameState?.board || []).length > 0} />)}
+            {myHand.map((tile) => <DominoTileUI key={tile.id} tile={tile} isHorizontal={false} onClick={() => handleTileClick(tile.id)} disabled={!isMyTurn || gameState?.status !== 'playing'} highlight={isMyTurn && canPlayTile(tile, gameState?.board || []).length > 0} />)}
          </div>
       </div>
-      <style>{`.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #3c3a37; border-radius: 10px; }`}</style>
     </div>
   );
 };
