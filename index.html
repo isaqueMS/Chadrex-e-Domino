@@ -1,0 +1,59 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Grandmaster Chess Pro</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background-color: #312e2b;
+      margin: 0;
+      color: white;
+      overscroll-behavior: none; /* Impede o "pull-to-refresh" no mobile */
+    }
+    .chess-board-grid {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      grid-template-rows: repeat(8, 1fr);
+    }
+    .square-light { background-color: #ebecd0; }
+    .square-dark { background-color: #779556; }
+    .piece-shadow { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+    .sidebar-bg { background-color: #262421; }
+    .nav-active { background-color: #3c3a37; border-left: 4px solid #81b64c; }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #262421; }
+    ::-webkit-scrollbar-thumb { background: #3c3a37; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: #4a4844; }
+
+    @media (max-width: 768px) {
+      .nav-active { border-left: none; border-bottom: 3px solid #81b64c; }
+    }
+  </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{
+  "name": "Grandmaster Chess Pro",
+  "description": "A feature-rich, high-performance online chess platform inspired by Chess.com, featuring local play, AI opponents, move analysis, and real-time game logic.",
+  "requestFramePermissions": []
+}
