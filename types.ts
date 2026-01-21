@@ -30,21 +30,9 @@ export enum GameMode {
 
 export type AppView = 'play' | 'puzzles' | 'learn' | 'dominoes';
 
-export interface Puzzle {
-  id: string;
-  fen: string;
-  moves: string[];
-  description: string;
-  difficulty: number;
-}
-
-export interface Lesson {
-  id: string;
-  title: string;
-  description: string;
-  category: 'Basics' | 'Tactics' | 'Endgames';
-  fen: string;
-  icon: string;
+export interface UserSettings {
+  chessTheme: 'green' | 'wood' | 'blue' | 'gray';
+  dominoTheme: 'felt' | 'wood' | 'dark' | 'blue';
 }
 
 export interface User {
@@ -54,6 +42,26 @@ export interface User {
   avatar: string;
   lastSeen?: number;
   dominoElo?: number;
+  settings?: UserSettings;
+}
+
+// Added missing Puzzle interface for Puzzles component
+export interface Puzzle {
+  id: string;
+  fen: string;
+  moves: string[];
+  description: string;
+  difficulty: number;
+}
+
+// Added missing Lesson interface for Learn component
+export interface Lesson {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  fen: string;
+  icon: string;
 }
 
 // Tipos de Dominó
