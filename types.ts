@@ -69,6 +69,12 @@ export interface DominoMove {
   isFlipped: boolean;
 }
 
+export interface DominoChatMessage {
+  user: string;
+  text: string;
+  timestamp: number;
+}
+
 export interface DominoGameState {
   players: User[];
   turnIndex: number;
@@ -76,6 +82,7 @@ export interface DominoGameState {
   hands: Record<string, DominoTile[]>;
   status: 'waiting' | 'playing' | 'finished';
   winnerId?: string;
+  chat?: Record<string, DominoChatMessage>;
 }
 
 declare global {
