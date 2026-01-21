@@ -21,6 +21,10 @@ const DominoTileUI: React.FC<{
   const a = isFlipped ? tile.sideB : tile.sideA;
   const b = isFlipped ? tile.sideA : tile.sideB;
 
+  // Determina se é uma bucha para forçar vertical no tabuleiro
+  const isBucha = tile.sideA === tile.sideB;
+  const finalHorizontal = isBoardPiece ? (isBucha ? false : true) : isHorizontal;
+
   const renderDots = (n: number) => {
     const dotPos = [
       [],                          // 0
@@ -51,8 +55,9 @@ const DominoTileUI: React.FC<{
       className={`
         relative bg-[#fffdf5] rounded-[4px] border border-[#d8d0c5] flex transition-all duration-200
         ${!disabled ? 'cursor-pointer hover:brightness-105 hover:-translate-y-1 active:translate-y-0 shadow-lg' : 'cursor-default shadow-md'}
-        ${isHorizontal ? 'flex-row w-14 h-9 sm:w-20 sm:h-12' : 'flex-col w-9 h-14 sm:w-12 sm:h-20'}
-        ${small ? 'scale-75 origin-center' : ''}
+        ${finalHorizontal ? 'flex-row w-14 h-9 sm:w-20 sm:h-12' : 'flex-col w-9 h-14 sm:w-12 sm:h-20'}
+        ${small && !isBucha ? 'scale-75 origin-center' : ''}
+        ${small && isBucha ? 'scale-90 origin-center' : ''}
         ${highlight ? 'ring-2 ring-[#81b64c] ring-offset-2 ring-offset-[#1a1917] z-20' : ''}
       `}
       style={{
@@ -61,7 +66,7 @@ const DominoTileUI: React.FC<{
       }}
     >
       <div className="flex-1 flex items-center justify-center">{renderDots(a)}</div>
-      <div className={`${isHorizontal ? 'w-[2.5px] h-3/4 my-auto bg-[#cbbda9] shadow-sm' : 'h-[2.5px] w-3/4 mx-auto bg-[#cbbda9] shadow-sm'}`} />
+      <div className={`${finalHorizontal ? 'w-[2.5px] h-3/4 my-auto bg-[#cbbda9] shadow-sm' : 'h-[2.5px] w-3/4 mx-auto bg-[#cbbda9] shadow-sm'}`} />
       <div className="flex-1 flex items-center justify-center">{renderDots(b)}</div>
       
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 bg-[#967d4f] rounded-full shadow-sm z-10 border border-[#b8a176]" />
@@ -274,7 +279,7 @@ const DominoGame: React.FC<DominoGameProps> = ({ currentUser }) => {
                   {isHost && (gameState.players?.length || 0) >= 2 && <button onClick={startNewMatch} className="mt-4 bg-[#81b64c] px-14 py-5 rounded-[2rem] font-black text-2xl shadow-[0_8px_0_#456528] active:translate-y-1">COMEÇAR JOGO</button>}
                </div>
            ) : (
-               <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 overflow-auto max-h-full p-4 sm:p-10 custom-scrollbar z-10 w-full content-center">
+               <div className="flex flex-wrap items-center justify-center gap-0.5 sm:gap-1 overflow-auto max-h-full p-4 sm:p-10 custom-scrollbar z-10 w-full content-center">
                   {gameState?.board?.map((move, i) => <DominoTileUI key={i} tile={move.tile} isFlipped={move.isFlipped} isHorizontal={true} small disabled isBoardPiece />)}
                </div>
            )}
