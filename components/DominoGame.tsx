@@ -51,13 +51,15 @@ const IndustrialTile: React.FC<{
   };
 
   const isBucha = tile.sideA === tile.sideB;
-  const isHorizontal = isBoardPiece ? !isBucha : true; // Mão do jogador agora sempre horizontal para melhor visualização
+  // Regra: No tabuleiro, buchas ficam verticais. Peças normais ficam horizontais.
+  // Na mão do jogador (xl), todas ficam horizontais para visualização.
+  const isHorizontal = isBoardPiece ? !isBucha : true;
 
   const dims = {
     sm: isHorizontal ? 'w-16 h-8' : 'w-8 h-16',
     md: isHorizontal ? 'w-24 h-12' : 'w-12 h-24',
     lg: isHorizontal ? 'w-28 h-14' : 'w-14 h-28',
-    xl: isHorizontal ? 'w-40 h-20' : 'w-20 h-40', // Aumentado para visibilidade extrema
+    xl: isHorizontal ? 'w-40 h-20' : 'w-20 h-40',
   }[size];
 
   return (
@@ -81,7 +83,7 @@ const IndustrialTile: React.FC<{
       
       <div className={`${isHorizontal ? 'flex-1 h-full' : 'h-1/2 w-full'} flex items-center justify-center z-10`}>{renderDots(b)}</div>
       
-      {/* Pino Central Metálico (Exatamente como na imagem) */}
+      {/* Pino Central Metálico */}
       <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${size === 'xl' ? 'w-5 h-5' : 'w-3.5 h-3.5'} bg-[#262626] rounded-full border border-white/20 shadow-lg z-20 flex items-center justify-center`}>
          <div className={`rounded-full bg-[#111] border border-white/5 ${size === 'xl' ? 'w-2.5 h-2.5' : 'w-1.5 h-1.5'}`}>
             <div className={`m-auto bg-[#81b64c]/20 rounded-full ${size === 'xl' ? 'w-1 h-1' : 'w-0.5 h-0.5'}`} />
@@ -193,14 +195,21 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
 
     const boneyard = fullSet.slice(players.length * 7);
 
+    // Se houve um vencedor anterior no modo duplas, o próximo turno começa com a dupla vencedora.
+    // Para simplificar, mantemos o turnIndex do vencedor ou reiniciamos se for a primeira vez.
+    const startTurn = gameState.winnerId 
+      ? players.findIndex(p => p.id === gameState.winnerId)
+      : 0;
+
     db.ref(`domino_rooms/${roomId}`).update({
       status: 'playing',
       hands,
       boneyard,
       board: [],
-      turnIndex: 0,
+      turnIndex: startTurn,
       winnerId: null,
-      winningTeam: null
+      winningTeam: null,
+      isLocked: false
     });
   };
 
@@ -223,9 +232,65 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const passTurn = () => {
     if (!gameState || !roomId || !isMyTurn) return;
     const players = gameState.players || [];
-    db.ref(`domino_rooms/${roomId}`).update({
-      turnIndex: (gameState.turnIndex + 1) % players.length
+    const nextTurn = (gameState.turnIndex + 1) % players.length;
+
+    // Verificar se o jogo fechou (ninguém tem peças para jogar e dormitório vazio)
+    checkLockedGame(nextTurn);
+  };
+
+  const checkLockedGame = (nextTurnIndex: number) => {
+    if (!gameState || !roomId) return;
+    const players = gameState.players || [];
+    const board = gameState.board || [];
+    const boneyard = gameState.boneyard || [];
+
+    // Se ainda há peças no boneyard, o jogo não pode trancar
+    if (boneyard.length > 0) {
+      db.ref(`domino_rooms/${roomId}`).update({ turnIndex: nextTurnIndex });
+      return;
+    }
+
+    // Verificar se QUALQUER jogador pode jogar
+    const anyoneCanPlay = players.some(p => {
+      const hand = gameState.hands?.[p.id] || [];
+      return hand.some(t => canPlayTile(t, board).length > 0);
     });
+
+    if (!anyoneCanPlay && board.length > 0) {
+      // Jogo fechou/trancou. Calcular vencedor por pontos.
+      handleLockFinish();
+    } else {
+      db.ref(`domino_rooms/${roomId}`).update({ turnIndex: nextTurnIndex });
+    }
+  };
+
+  const handleLockFinish = () => {
+    if (!gameState || !roomId) return;
+    const players = gameState.players || [];
+    
+    // Calcular soma de pontos de cada jogador
+    const scores = players.map(p => {
+      const hand = gameState.hands?.[p.id] || [];
+      const totalPoints = hand.reduce((sum, t) => sum + t.sideA + t.sideB, 0);
+      return { id: p.id, points: totalPoints };
+    });
+
+    // Encontrar o jogador com menor pontuação
+    scores.sort((a, b) => a.points - b.points);
+    const winner = scores[0];
+
+    const updates: any = {
+      status: 'finished',
+      winnerId: winner.id,
+      isLocked: true
+    };
+
+    if (gameState.mode === 'teams') {
+      const winnerIndex = players.findIndex(p => p.id === winner.id);
+      updates.winningTeam = winnerIndex % 2;
+    }
+
+    db.ref(`domino_rooms/${roomId}`).update(updates);
   };
 
   const handlePlay = (tile: DominoTile) => {
@@ -252,22 +317,25 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     const currentHand = (gameState.hands?.[currentUser.id]) || [];
     const newHand = currentHand.filter((t: any) => t.id !== tile.id);
 
-    const updates: any = {
-      board: newBoard,
-      [`hands/${currentUser.id}`]: newHand,
-      turnIndex: (gameState.turnIndex + 1) % players.length
-    };
-
     if (newHand.length === 0) {
-      updates.status = 'finished';
-      updates.winnerId = currentUser.id;
+      // Vitória direta batendo
+      const updates: any = {
+        board: newBoard,
+        [`hands/${currentUser.id}`]: newHand,
+        status: 'finished',
+        winnerId: currentUser.id
+      };
       if (gameState.mode === 'teams') {
         const winnerIndex = players.findIndex(p => p.id === currentUser.id);
         updates.winningTeam = winnerIndex % 2;
       }
+      db.ref(`domino_rooms/${roomId}`).update(updates);
+    } else {
+      // Continuar jogo
+      db.ref(`domino_rooms/${roomId}/board`).set(newBoard);
+      db.ref(`domino_rooms/${roomId}/hands/${currentUser.id}`).set(newHand);
+      checkLockedGame((gameState.turnIndex + 1) % players.length);
     }
-
-    db.ref(`domino_rooms/${roomId}`).update(updates);
     setPendingSelection(null);
   };
 
@@ -377,16 +445,23 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
           {gameState?.status === 'finished' && (
             <div className="absolute inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-12 animate-in zoom-in duration-500 text-center">
                <div className="w-28 h-28 bg-[#81b64c] rounded-[2.5rem] flex items-center justify-center mb-12 shadow-[0_0_80px_rgba(129,182,76,0.5)]">
-                 <i className="fas fa-flag-checkered text-5xl text-white"></i>
+                 <i className={`fas ${gameState.isLocked ? 'fa-lock' : 'fa-flag-checkered'} text-5xl text-white`}></i>
                </div>
-               <h2 className="text-6xl font-black text-white italic tracking-tighter uppercase mb-4">SISTEMA DOMINADO</h2>
-               <p className="text-[#81b64c] text-2xl font-black uppercase tracking-[0.4em] mb-16">OPERADOR: {players.find(p => p.id === gameState.winnerId)?.name}</p>
-               <button onClick={startMatch} className="bg-[#81b64c] hover:bg-[#95c65d] px-24 py-7 rounded-3xl font-black text-2xl shadow-[0_10px_0_#456528] active:translate-y-1 transition-all uppercase tracking-widest text-white">REINICIAR</button>
+               <h2 className="text-6xl font-black text-white italic tracking-tighter uppercase mb-4">
+                 {gameState.isLocked ? 'SISTEMA TRANCADO' : 'SISTEMA DOMINADO'}
+               </h2>
+               <div className="flex flex-col gap-2 mb-16">
+                 <p className="text-[#81b64c] text-2xl font-black uppercase tracking-[0.4em]">VENCEDOR: {players.find(p => p.id === gameState.winnerId)?.name}</p>
+                 {gameState.mode === 'teams' && (
+                   <div className="bg-blue-500/10 text-blue-400 px-8 py-3 rounded-full border border-blue-500/20 text-sm font-black uppercase tracking-widest self-center mt-2">VITÓRIA DO TIME {gameState.winningTeam === 0 ? 'ALFA (1&3)' : 'BETA (2&4)'}</div>
+                 )}
+               </div>
+               <button onClick={startMatch} className="bg-[#81b64c] hover:bg-[#95c65d] px-24 py-7 rounded-3xl font-black text-2xl shadow-[0_10px_0_#456528] active:translate-y-1 transition-all uppercase tracking-widest text-white">NOVA RODADA</button>
             </div>
           )}
         </div>
 
-        {/* Arsenal (Hand Area) - VISUALIZAÇÃO APRIMORADA */}
+        {/* Arsenal (Hand Area) */}
         <div className={`bg-[#262421] p-8 md:p-10 rounded-[4rem] border-t-[10px] shadow-2xl transition-all duration-700 ${isMyTurn ? 'border-[#a3e635] bg-[#2a2825]' : 'border-[#1a1917]'}`}>
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8 mb-8">
             <div className="flex items-center gap-8">
@@ -415,7 +490,7 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             </div>
           </div>
 
-          {/* Área das Peças na Mão - Peças Grandes e Horizontais */}
+          {/* Área das Peças na Mão */}
           <div className="bg-black/80 rounded-[3rem] p-10 border border-white/5 shadow-inner min-h-[260px] flex items-center gap-10 overflow-x-auto no-scrollbar custom-scrollbar relative">
             {myHand.length === 0 && gameState?.status === 'playing' ? (
               <div className="flex-1 text-center py-10 opacity-10 font-black uppercase tracking-[2em] text-sm">Arsenal Esgotado</div>
@@ -427,7 +502,7 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                     onClick={() => handlePlay(t)} 
                     disabled={!isMyTurn} 
                     highlight={isMyTurn && canPlayTile(t, gameState?.board || []).length > 0} 
-                    size="xl" // Peça XL para visualização clara
+                    size="xl"
                   />
                 </div>
               ))
@@ -467,14 +542,21 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             </div>
             
             <div className="flex-1 p-6 overflow-y-auto space-y-5 custom-scrollbar">
-               {chatMessages.map((m, i) => (
-                 <div key={i} className={`flex flex-col ${m.user === 'SISTEMA' ? 'items-center py-2' : ''}`}>
-                   {m.user !== 'SISTEMA' && <span className={`text-[9px] font-black uppercase mb-1.5 px-3 ${m.user === currentUser.name ? 'text-[#81b64c] self-end' : 'text-gray-500'}`}>{m.user}</span>}
-                   <div className={`px-5 py-3.5 rounded-[1.5rem] text-[13px] leading-relaxed shadow-lg border transition-all ${m.user === 'SISTEMA' ? 'bg-transparent border-transparent text-[#81b64c] italic text-[10px] text-center' : m.user === currentUser.name ? 'bg-[#81b64c]/10 border-[#81b64c]/30 text-white self-end rounded-tr-none' : 'bg-[#1a1917] border-white/5 text-gray-300 self-start rounded-tl-none'}`}>
-                      {m.text}
-                   </div>
+               {chatMessages.length === 0 ? (
+                 <div className="h-full flex flex-col items-center justify-center opacity-10 py-10">
+                   <i className="fas fa-terminal text-6xl mb-6"></i>
+                   <p className="text-[11px] font-black uppercase tracking-[0.3em]">Criptografia Estabelecida...</p>
                  </div>
-               ))}
+               ) : (
+                 chatMessages.map((m, i) => (
+                   <div key={i} className={`flex flex-col ${m.user === 'SISTEMA' ? 'items-center py-2' : ''}`}>
+                     {m.user !== 'SISTEMA' && <span className={`text-[9px] font-black uppercase mb-1.5 px-3 ${m.user === currentUser.name ? 'text-[#81b64c] self-end' : 'text-gray-500'}`}>{m.user}</span>}
+                     <div className={`px-5 py-3.5 rounded-[1.5rem] text-[13px] leading-relaxed shadow-lg border transition-all ${m.user === 'SISTEMA' ? 'bg-transparent border-transparent text-[#81b64c] italic text-[10px] text-center' : m.user === currentUser.name ? 'bg-[#81b64c]/10 border-[#81b64c]/30 text-white self-end rounded-tr-none' : 'bg-[#1a1917] border-white/5 text-gray-300 self-start rounded-tl-none'}`}>
+                        {m.text}
+                     </div>
+                   </div>
+                 ))
+               )}
                <div ref={chatEndRef} />
             </div>
 
