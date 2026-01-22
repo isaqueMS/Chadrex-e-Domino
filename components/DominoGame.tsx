@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { User, DominoTile, DominoMove, DominoGameState, DominoChatMessage, DominoMode } from '../types';
-import { createFullSet, shuffleSet, canPlayTile } from '../services/dominoLogic';
+import { createFullSet, shuffleSet, canPlayTile, calculatePoints } from '../services/dominoLogic';
 import { db } from '../services/firebase';
+import { analyzeDominoMove } from '../services/ai';
 
 const QUICK_EMOJIS = ['🎲', '🎯', '🔥', '🏆', '💪', '🤝', '🤫', '💀', '⚡', '🧠'];
 
@@ -35,13 +36,13 @@ const IndustrialTile: React.FC<{
   const renderDots = (n: number) => {
     const dotPos = [[], [4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8]][n];
     return (
-      <div className={`grid grid-cols-3 grid-rows-3 gap-[1.5px] w-full h-full ${size === 'sm' ? 'p-1' : size === 'xl' ? 'p-3' : 'p-2'}`}>
+      <div className={`grid grid-cols-3 grid-rows-3 gap-[1.5px] w-full h-full ${size === 'xl' ? 'p-3' : 'p-2'}`}>
         {[...Array(9)].map((_, i) => (
           <div key={i} className="flex items-center justify-center">
             {dotPos.includes(i) && (
               <div className={`rounded-full transition-all duration-300 
                 ${highlight && !disabled ? 'bg-[#a3e635] shadow-[0_0_12px_#a3e635]' : 'bg-[#81b64c] shadow-[0_0_8px_rgba(129,182,76,0.6)]'} 
-                ${size === 'sm' ? 'w-1.5 h-1.5' : size === 'md' ? 'w-2 h-2' : size === 'xl' ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5'}`} 
+                ${size === 'sm' ? 'w-1.5 h-1.5' : size === 'md' ? 'w-2 h-2' : size === 'xl' ? 'w-4 h-4' : 'w-3 h-3'}`} 
               />
             )}
           </div>
@@ -51,8 +52,6 @@ const IndustrialTile: React.FC<{
   };
 
   const isBucha = tile.sideA === tile.sideB;
-  // Regra: No tabuleiro, buchas ficam verticais. Peças normais ficam horizontais.
-  // Na mão do jogador (xl), todas ficam horizontais para visualização.
   const isHorizontal = isBoardPiece ? !isBucha : true;
 
   const dims = {
@@ -65,7 +64,7 @@ const IndustrialTile: React.FC<{
   return (
     <div 
       onClick={!disabled ? onClick : undefined}
-      className={`relative flex transition-all duration-300 shrink-0 border-[1.5px]
+      className={`relative flex ${isHorizontal ? 'flex-row' : 'flex-col'} transition-all duration-300 shrink-0 border-[1.5px]
         ${!disabled ? 'cursor-pointer hover:border-[#a3e635] hover:-translate-y-4 hover:scale-105 active:scale-95 z-10' : 'cursor-default opacity-90'} 
         ${dims}
         ${isBoardPiece ? 'rounded-md shadow-lg border-white/20' : 'rounded-xl shadow-2xl border-white/30'}
@@ -76,17 +75,21 @@ const IndustrialTile: React.FC<{
         backgroundImage: 'linear-gradient(145deg, #222 0%, #050505 100%)', 
       }}
     >
-      <div className={`${isHorizontal ? 'flex-1 h-full' : 'h-1/2 w-full'} flex items-center justify-center z-10`}>{renderDots(a)}</div>
+      <div className={`${isHorizontal ? 'flex-1 h-full' : 'w-full h-1/2'} flex items-center justify-center z-10 overflow-hidden`}>
+        {renderDots(a)}
+      </div>
       
-      {/* Linha Divisória */}
-      <div className={`${isHorizontal ? 'w-[1.5px] h-3/4 my-auto' : 'h-[1.5px] w-3/4 mx-auto'} bg-[#333] relative z-10 opacity-30`} />
+      {/* Visual Separator */}
+      <div className={`${isHorizontal ? 'w-[1.5px] h-3/4 my-auto' : 'h-[1.5px] w-3/4 mx-auto'} bg-[#333] relative z-10 opacity-40`} />
       
-      <div className={`${isHorizontal ? 'flex-1 h-full' : 'h-1/2 w-full'} flex items-center justify-center z-10`}>{renderDots(b)}</div>
+      <div className={`${isHorizontal ? 'flex-1 h-full' : 'w-full h-1/2'} flex items-center justify-center z-10 overflow-hidden`}>
+        {renderDots(b)}
+      </div>
       
-      {/* Pino Central Metálico */}
-      <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${size === 'xl' ? 'w-5 h-5' : 'w-3.5 h-3.5'} bg-[#262626] rounded-full border border-white/20 shadow-lg z-20 flex items-center justify-center`}>
-         <div className={`rounded-full bg-[#111] border border-white/5 ${size === 'xl' ? 'w-2.5 h-2.5' : 'w-1.5 h-1.5'}`}>
-            <div className={`m-auto bg-[#81b64c]/20 rounded-full ${size === 'xl' ? 'w-1 h-1' : 'w-0.5 h-0.5'}`} />
+      {/* Central Metallic Pin */}
+      <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${size === 'xl' ? 'w-6 h-6' : 'w-4 h-4'} bg-[#262626] rounded-full border border-white/20 shadow-lg z-20 flex items-center justify-center`}>
+         <div className={`rounded-full bg-[#111] border border-white/5 ${size === 'xl' ? 'w-3 h-3' : 'w-2 h-2'}`}>
+            <div className={`m-auto bg-[#81b64c]/20 rounded-full ${size === 'xl' ? 'w-1.5 h-1.5' : 'w-1 h-1'}`} />
          </div>
       </div>
     </div>
@@ -100,6 +103,8 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const [chatInput, setChatInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [gameMode, setLocalGameMode] = useState<DominoMode>('individual');
+  const [aiTip, setAiTip] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -195,8 +200,7 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
 
     const boneyard = fullSet.slice(players.length * 7);
 
-    // Se houve um vencedor anterior no modo duplas, o próximo turno começa com a dupla vencedora.
-    // Para simplificar, mantemos o turnIndex do vencedor ou reiniciamos se for a primeira vez.
+    // Rule: Member of the winning team/player starts next round
     const startTurn = gameState.winnerId 
       ? players.findIndex(p => p.id === gameState.winnerId)
       : 0;
@@ -206,11 +210,12 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
       hands,
       boneyard,
       board: [],
-      turnIndex: startTurn,
+      turnIndex: startTurn !== -1 ? startTurn : 0,
       winnerId: null,
       winningTeam: null,
       isLocked: false
     });
+    setAiTip(null);
   };
 
   const drawTile = () => {
@@ -233,8 +238,6 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     if (!gameState || !roomId || !isMyTurn) return;
     const players = gameState.players || [];
     const nextTurn = (gameState.turnIndex + 1) % players.length;
-
-    // Verificar se o jogo fechou (ninguém tem peças para jogar e dormitório vazio)
     checkLockedGame(nextTurn);
   };
 
@@ -244,20 +247,19 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     const board = gameState.board || [];
     const boneyard = gameState.boneyard || [];
 
-    // Se ainda há peças no boneyard, o jogo não pode trancar
+    // If there's still a boneyard, just pass
     if (boneyard.length > 0) {
       db.ref(`domino_rooms/${roomId}`).update({ turnIndex: nextTurnIndex });
       return;
     }
 
-    // Verificar se QUALQUER jogador pode jogar
+    // Check if ANYONE can play
     const anyoneCanPlay = players.some(p => {
       const hand = gameState.hands?.[p.id] || [];
       return hand.some(t => canPlayTile(t, board).length > 0);
     });
 
     if (!anyoneCanPlay && board.length > 0) {
-      // Jogo fechou/trancou. Calcular vencedor por pontos.
       handleLockFinish();
     } else {
       db.ref(`domino_rooms/${roomId}`).update({ turnIndex: nextTurnIndex });
@@ -268,14 +270,12 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     if (!gameState || !roomId) return;
     const players = gameState.players || [];
     
-    // Calcular soma de pontos de cada jogador
     const scores = players.map(p => {
       const hand = gameState.hands?.[p.id] || [];
-      const totalPoints = hand.reduce((sum, t) => sum + t.sideA + t.sideB, 0);
-      return { id: p.id, points: totalPoints };
+      return { id: p.id, points: calculatePoints(hand) };
     });
 
-    // Encontrar o jogador com menor pontuação
+    // Winner has lowest points
     scores.sort((a, b) => a.points - b.points);
     const winner = scores[0];
 
@@ -318,7 +318,6 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     const newHand = currentHand.filter((t: any) => t.id !== tile.id);
 
     if (newHand.length === 0) {
-      // Vitória direta batendo
       const updates: any = {
         board: newBoard,
         [`hands/${currentUser.id}`]: newHand,
@@ -331,12 +330,20 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
       }
       db.ref(`domino_rooms/${roomId}`).update(updates);
     } else {
-      // Continuar jogo
       db.ref(`domino_rooms/${roomId}/board`).set(newBoard);
       db.ref(`domino_rooms/${roomId}/hands/${currentUser.id}`).set(newHand);
       checkLockedGame((gameState.turnIndex + 1) % players.length);
     }
     setPendingSelection(null);
+    setAiTip(null);
+  };
+
+  const getAiSuggestion = async () => {
+    if (!gameState || !isMyTurn || isAnalyzing) return;
+    setIsAnalyzing(true);
+    const suggestion = await analyzeDominoMove(gameState.board || [], myHand);
+    setAiTip(suggestion || "Sem sugestões no momento.");
+    setIsAnalyzing(false);
   };
 
   const players = gameState?.players || [];
@@ -349,22 +356,18 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const chatMessages: DominoChatMessage[] = gameState?.chat ? Object.values(gameState.chat) : [];
 
   if (!roomId) return (
-    <div className="flex flex-col items-center justify-center h-full gap-12 bg-[#1a1917] w-full max-w-4xl rounded-[4rem] border border-white/5 shadow-2xl p-12">
+    <div className="flex flex-col items-center justify-center h-full gap-12 bg-[#1a1917] w-full max-w-4xl rounded-[4rem] border border-white/5 shadow-2xl p-12 animate-in zoom-in duration-500">
       <div className="text-center">
         <h1 className="text-7xl font-black italic tracking-tighter text-white mb-4 uppercase">Carbon <span className="text-[#81b64c]">Core</span></h1>
         <p className="text-gray-500 uppercase text-xs font-bold tracking-[0.2em] max-w-xs mx-auto">SISTEMA DE DOMINÓ INDUSTRIAL</p>
       </div>
-      <button onClick={createRoom} className="bg-[#81b64c] hover:bg-[#95c65d] px-20 py-6 rounded-3xl font-black text-xl shadow-[0_8px_0_#456528] active:translate-y-1 transition-all uppercase tracking-widest">CRIAR SALA TÁTICA</button>
+      <button onClick={createRoom} className="bg-[#81b64c] hover:bg-[#95c65d] px-20 py-6 rounded-3xl font-black text-xl shadow-[0_8px_0_#456528] active:translate-y-1 transition-all uppercase tracking-widest text-white">CRIAR SALA TÁTICA</button>
     </div>
   );
 
   return (
-    <div className="flex flex-col lg:flex-row h-full w-full max-w-[1600px] gap-6 overflow-hidden pb-24 lg:pb-12 px-4 relative">
-      
-      {/* Coluna Principal */}
+    <div className="flex flex-col lg:flex-row h-full w-full max-w-[1600px] gap-6 overflow-hidden pb-24 lg:pb-12 px-4 relative animate-in fade-in duration-700">
       <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-        
-        {/* Barra Superior */}
         <div className="bg-[#262421] px-6 py-4 rounded-[2.5rem] border border-white/5 shadow-2xl flex flex-wrap items-center justify-between gap-4 z-20">
           <div className="flex items-center gap-4">
             <div className="bg-[#1a1917] px-5 py-2.5 rounded-2xl border border-[#81b64c]/30 text-[#81b64c] font-black font-mono shadow-inner text-sm flex items-center gap-3">
@@ -375,10 +378,9 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
               <i className={`fas ${copied ? 'fa-check' : 'fa-link'}`}></i>
             </button>
           </div>
-
           <div className="flex items-center gap-3">
              <div className="bg-black/40 px-5 py-2.5 rounded-xl text-[10px] font-black text-gray-400 uppercase tracking-widest border border-white/5">
-                Dormitório: {boneyard.length}
+                Boneyard: {boneyard.length}
              </div>
              <div className="bg-[#81b64c]/10 px-5 py-2.5 rounded-xl text-[10px] font-black text-[#81b64c] uppercase tracking-widest border border-[#81b64c]/20">
                 {gameMode === 'individual' ? 'Solo' : 'Duplas'}
@@ -386,8 +388,7 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
           </div>
         </div>
 
-        {/* Tabuleiro */}
-        <div className="flex-1 bg-[#0d0d0d] rounded-[3.5rem] border-[14px] border-[#262421] relative shadow-inner overflow-hidden">
+        <div className="flex-1 bg-[#0d0d0d] rounded-[3.5rem] border-[14px] border-[#262421] relative shadow-inner overflow-hidden flex flex-col">
           <div className="absolute inset-0 opacity-[0.03] pointer-events-none" 
                style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
           
@@ -414,14 +415,21 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
               </div>
             </div>
           ) : (
-            <div ref={boardRef} className="flex items-center gap-4 px-32 py-20 overflow-x-auto overflow-y-hidden w-full h-full no-scrollbar custom-scrollbar scroll-smooth z-10">
-              <div className="flex-shrink-0 w-[30%]" />
+            <div ref={boardRef} className="flex-1 flex items-center gap-6 px-48 py-20 overflow-x-auto overflow-y-hidden w-full no-scrollbar custom-scrollbar scroll-smooth z-10">
+              <div className="flex-shrink-0 w-[40%]" />
               {(gameState?.board || []).map((m, i) => (
-                <div key={`${m.tile.id}-${i}`} className="animate-in zoom-in slide-in-from-right-20 duration-500 flex-shrink-0">
+                <div key={`${m.tile.id}-${i}`} className="animate-in zoom-in slide-in-from-right-20 duration-500 flex-shrink-0 flex items-center justify-center">
                   <IndustrialTile tile={m.tile} isFlipped={m.isFlipped} isBoardPiece size="md" />
                 </div>
               ))}
-              <div className="flex-shrink-0 w-[30%]" />
+              <div className="flex-shrink-0 w-[40%]" />
+            </div>
+          )}
+
+          {/* AI Tip Bar */}
+          {aiTip && (
+            <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-[#262421]/90 backdrop-blur-md px-8 py-4 rounded-full border border-purple-500/30 shadow-2xl z-40 max-w-md animate-in slide-in-from-top-4">
+              <p className="text-xs font-bold text-purple-400 italic tracking-tight">{aiTip}</p>
             </div>
           )}
 
@@ -453,15 +461,14 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                <div className="flex flex-col gap-2 mb-16">
                  <p className="text-[#81b64c] text-2xl font-black uppercase tracking-[0.4em]">VENCEDOR: {players.find(p => p.id === gameState.winnerId)?.name}</p>
                  {gameState.mode === 'teams' && (
-                   <div className="bg-blue-500/10 text-blue-400 px-8 py-3 rounded-full border border-blue-500/20 text-sm font-black uppercase tracking-widest self-center mt-2">VITÓRIA DO TIME {gameState.winningTeam === 0 ? 'ALFA (1&3)' : 'BETA (2&4)'}</div>
+                   <div className="bg-blue-500/10 text-blue-400 px-8 py-3 rounded-full border border-blue-500/20 text-sm font-black uppercase tracking-widest self-center mt-2">TIME {gameState.winningTeam === 0 ? 'ALFA (1&3)' : 'BETA (2&4)'}</div>
                  )}
                </div>
-               <button onClick={startMatch} className="bg-[#81b64c] hover:bg-[#95c65d] px-24 py-7 rounded-3xl font-black text-2xl shadow-[0_10px_0_#456528] active:translate-y-1 transition-all uppercase tracking-widest text-white">NOVA RODADA</button>
+               <button onClick={startMatch} className="bg-[#81b64c] hover:bg-[#95c65d] px-24 py-7 rounded-3xl font-black text-2xl shadow-[0_10px_0_#456528] active:translate-y-1 transition-all uppercase tracking-widest text-white">REINICIAR</button>
             </div>
           )}
         </div>
 
-        {/* Arsenal (Hand Area) */}
         <div className={`bg-[#262421] p-8 md:p-10 rounded-[4rem] border-t-[10px] shadow-2xl transition-all duration-700 ${isMyTurn ? 'border-[#a3e635] bg-[#2a2825]' : 'border-[#1a1917]'}`}>
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8 mb-8">
             <div className="flex items-center gap-8">
@@ -481,6 +488,13 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             </div>
 
             <div className="flex gap-4 w-full md:w-auto">
+              <button 
+                onClick={getAiSuggestion} 
+                disabled={!isMyTurn || isAnalyzing}
+                className={`h-16 px-8 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-4 bg-purple-500/10 border-2 border-purple-500/20 text-purple-400 hover:bg-purple-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed`}
+              >
+                <i className={`fas ${isAnalyzing ? 'fa-spinner fa-spin' : 'fa-brain'} text-xl`}></i> Análise AI
+              </button>
               <button disabled={!isMyTurn || boneyard.length === 0 || canIPlay} onClick={drawTile} className={`flex-1 md:flex-none h-16 px-10 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-4 border-2 ${(!isMyTurn || boneyard.length === 0 || canIPlay) ? 'bg-[#1a1917] border-transparent text-gray-700 opacity-40 cursor-not-allowed' : 'bg-[#3c3a37] border-white/5 text-white hover:bg-[#4a4844] shadow-2xl'}`}>
                 <i className="fas fa-plus-square text-xl"></i> COMPRAR
               </button>
@@ -490,10 +504,9 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             </div>
           </div>
 
-          {/* Área das Peças na Mão */}
           <div className="bg-black/80 rounded-[3rem] p-10 border border-white/5 shadow-inner min-h-[260px] flex items-center gap-10 overflow-x-auto no-scrollbar custom-scrollbar relative">
             {myHand.length === 0 && gameState?.status === 'playing' ? (
-              <div className="flex-1 text-center py-10 opacity-10 font-black uppercase tracking-[2em] text-sm">Arsenal Esgotado</div>
+              <div className="flex-1 text-center py-10 opacity-10 font-black uppercase tracking-[2em] text-sm text-white">Arsenal Esgotado</div>
             ) : (
               myHand.map((t) => (
                 <div key={t.id} className="transition-all duration-300">
@@ -511,9 +524,7 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
         </div>
       </div>
 
-      {/* Painel Lateral */}
       <div className="w-full lg:w-[400px] flex flex-col gap-4">
-         
          <div className="bg-[#262421] p-8 rounded-[3rem] border border-white/5 shadow-2xl">
            <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-8 px-2">UNIDADES EM CAMPO</h4>
            <div className="space-y-4">
@@ -544,14 +555,14 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             <div className="flex-1 p-6 overflow-y-auto space-y-5 custom-scrollbar">
                {chatMessages.length === 0 ? (
                  <div className="h-full flex flex-col items-center justify-center opacity-10 py-10">
-                   <i className="fas fa-terminal text-6xl mb-6"></i>
+                   <i className="fas fa-terminal text-6xl mb-6 text-gray-700"></i>
                    <p className="text-[11px] font-black uppercase tracking-[0.3em]">Criptografia Estabelecida...</p>
                  </div>
                ) : (
                  chatMessages.map((m, i) => (
                    <div key={i} className={`flex flex-col ${m.user === 'SISTEMA' ? 'items-center py-2' : ''}`}>
-                     {m.user !== 'SISTEMA' && <span className={`text-[9px] font-black uppercase mb-1.5 px-3 ${m.user === currentUser.name ? 'text-[#81b64c] self-end' : 'text-gray-500'}`}>{m.user}</span>}
-                     <div className={`px-5 py-3.5 rounded-[1.5rem] text-[13px] leading-relaxed shadow-lg border transition-all ${m.user === 'SISTEMA' ? 'bg-transparent border-transparent text-[#81b64c] italic text-[10px] text-center' : m.user === currentUser.name ? 'bg-[#81b64c]/10 border-[#81b64c]/30 text-white self-end rounded-tr-none' : 'bg-[#1a1917] border-white/5 text-gray-300 self-start rounded-tl-none'}`}>
+                     {m.user !== 'SISTEMA' && <span className={`text-[9px] font-black text-gray-500 uppercase mb-1.5 px-3 ${m.user === currentUser.name ? 'self-end' : ''}`}>{m.user}</span>}
+                     <div className={`px-5 py-3.5 rounded-[1.5rem] text-[13px] shadow-lg border transition-all ${m.user === 'SISTEMA' ? 'bg-transparent border-transparent text-[#81b64c] italic text-[10px] text-center' : m.user === currentUser.name ? 'bg-[#81b64c]/10 border-[#81b64c]/30 text-white self-end rounded-tr-none' : 'bg-[#1a1917] border-white/5 text-gray-300 self-start rounded-tl-none'}`}>
                         {m.text}
                      </div>
                    </div>
@@ -567,7 +578,7 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                 ))}
               </div>
               <form onSubmit={e => { e.preventDefault(); handleSendMessage(chatInput); }} className="flex gap-3">
-                <input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Transmitir dados..." className="flex-1 bg-[#262421] border border-white/10 rounded-2xl px-6 py-4 text-xs outline-none text-white font-mono shadow-inner" />
+                <input value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Transmitir dados..." className="flex-1 bg-[#262421] border border-white/10 rounded-2xl px-6 py-4 text-xs outline-none text-white font-mono shadow-inner focus:ring-1 focus:ring-[#81b64c]/50" />
                 <button type="submit" className="bg-[#81b64c] w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-[0_4px_0_#456528] active:translate-y-1 transition-all">
                   <i className="fas fa-paper-plane text-lg"></i>
                 </button>
@@ -575,7 +586,6 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             </div>
          </div>
       </div>
-
     </div>
   );
 };

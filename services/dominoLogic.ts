@@ -21,6 +21,10 @@ export const shuffleSet = (set: DominoTile[]): DominoTile[] => {
   return newSet;
 };
 
+export const calculatePoints = (hand: DominoTile[]): number => {
+  return hand.reduce((sum, tile) => sum + tile.sideA + tile.sideB, 0);
+};
+
 export const canPlayTile = (tile: DominoTile, board: DominoMove[]): { side: 'left' | 'right'; isFlipped: boolean }[] => {
   if (!board || board.length === 0) {
     return [{ side: 'right', isFlipped: false }];
@@ -34,14 +38,14 @@ export const canPlayTile = (tile: DominoTile, board: DominoMove[]): { side: 'lef
 
   const validOptions: { side: 'left' | 'right'; isFlipped: boolean }[] = [];
 
-  // Checar extremidade esquerda
+  // Check left extremity
   if (tile.sideA === leftValue) {
     validOptions.push({ side: 'left', isFlipped: true });
   } else if (tile.sideB === leftValue) {
     validOptions.push({ side: 'left', isFlipped: false });
   }
 
-  // Checar extremidade direita
+  // Check right extremity
   if (tile.sideA === rightValue) {
     validOptions.push({ side: 'right', isFlipped: false });
   } else if (tile.sideB === rightValue) {
