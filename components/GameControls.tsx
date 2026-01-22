@@ -14,11 +14,10 @@ interface GameControlsProps {
   onSendMessage?: (text: string) => void;
   onlineRoom?: string | null;
   onCreateOnline?: () => void;
-  onPlayBot?: () => void;
 }
 
 const GameControls: React.FC<GameControlsProps> = ({ 
-  history, onUndo, onResign, turn, whiteTimer, blackTimer, gameMode, messages = [], onSendMessage, onlineRoom, onCreateOnline, onPlayBot 
+  history, onUndo, onResign, turn, whiteTimer, blackTimer, gameMode, messages = [], onSendMessage, onlineRoom, onCreateOnline
 }) => {
   const [activeTab, setActiveTab] = useState<'moves' | 'chat'>('moves');
   const [chatInput, setChatInput] = useState('');
@@ -131,14 +130,6 @@ const GameControls: React.FC<GameControlsProps> = ({
       </div>
 
       <div className="p-6 bg-[#1a1917] border-t border-white/5 flex flex-col gap-4">
-        {!onlineRoom && (
-           <button 
-             onClick={onPlayBot} 
-             className="w-full py-4 bg-[#81b64c] hover:bg-[#95c65d] rounded-2xl font-black text-xs uppercase shadow-[0_4px_0_#456528] active:translate-y-1 active:shadow-none flex items-center justify-center gap-3 transition-all"
-           >
-             <i className="fas fa-robot text-base"></i> Jogar Contra a IA
-           </button>
-        )}
         {onlineRoom ? (
           <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/?room=${onlineRoom}`); }} className="w-full py-4 bg-[#81b64c] rounded-2xl font-black text-xs uppercase shadow-[0_4px_0_#456528] active:translate-y-1 active:shadow-none hover:brightness-110 transition-all flex items-center justify-center gap-3">
             <i className="fas fa-link"></i> Compartilhar Link

@@ -7,7 +7,7 @@ import Puzzles from './components/Puzzles';
 import Learn from './components/Learn';
 import DominoGame from './components/DominoGame';
 import { Board, Move, Color, GameMode, User, AppView, UserSettings } from './types';
-import { createInitialBoard, makeMove, getGameState, getBestMove } from './services/chessLogic';
+import { createInitialBoard, makeMove, getGameState } from './services/chessLogic';
 import { db } from './services/firebase';
 
 const Confetti: React.FC = () => (
@@ -46,13 +46,10 @@ const App: React.FC = () => {
   const [turn, setTurn] = useState<Color>('w');
   const [history, setHistory] = useState<Move[]>([]);
   const [gameOver, setGameOver] = useState<string | null>(null);
-  const [timers, setTimers] = useState({ w: 600, b: 600 });
   const [gameMode, setGameMode] = useState<GameMode>(GameMode.LOCAL);
   const [playerColor, setPlayerColor] = useState<Color>('w');
   const [opponent, setOpponent] = useState<User | null>(null);
   const [onlineRoom, setOnlineRoom] = useState<string | null>(null);
-  const [botThinking, setBotThinking] = useState(false);
-  const [showBotSelector, setShowBotSelector] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
 
@@ -144,31 +141,8 @@ const App: React.FC = () => {
   const handleMove = useCallback((move: Move) => {
     if (gameOver) return;
     if (gameMode === GameMode.ONLINE && turn !== playerColor) return;
-    if (gameMode === GameMode.AI && turn !== playerColor) return;
     applyMove(move);
   }, [gameOver, applyMove, gameMode, turn, playerColor]);
-
-  // AI Bot Execution Flow
-  useEffect(() => {
-    let isMounted = true;
-    if (gameMode === GameMode.AI && turn !== playerColor && !gameOver && !botThinking) {
-      setBotThinking(true);
-      const thinkTimer = setTimeout(() => {
-        if (!isMounted) return;
-        try {
-          const move = getBestMove(boardRef.current, turn, opponent?.elo || 1200);
-          if (move && isMounted) {
-            applyMove(move);
-          }
-        } catch (err) {
-          console.error("Bot Logic Error:", err);
-        } finally {
-          if (isMounted) setBotThinking(false);
-        }
-      }, 800); // Slightly faster thinking
-      return () => { isMounted = false; clearTimeout(thinkTimer); };
-    }
-  }, [turn, gameMode, playerColor, gameOver, botThinking, applyMove, opponent]);
 
   const createOnlineRoom = () => {
     const id = Math.random().toString(36).substr(2, 6).toUpperCase();
@@ -185,13 +159,6 @@ const App: React.FC = () => {
     });
   };
 
-  const startAiGame = (bot: any) => {
-    resetGame();
-    setGameMode(GameMode.AI);
-    setOpponent({ ...bot, id: `bot_${bot.elo}` });
-    setShowBotSelector(false);
-  };
-
   const resetGame = () => {
     boardRef.current = createInitialBoard();
     historyRef.current = [];
@@ -202,7 +169,6 @@ const App: React.FC = () => {
     setGameMode(GameMode.LOCAL);
     setOnlineRoom(null);
     setOpponent(null);
-    setBotThinking(false);
     setShowCelebration(false);
     window.history.replaceState(null, '', window.location.pathname);
   };
@@ -251,17 +217,12 @@ const App: React.FC = () => {
               <div className="flex items-center justify-between px-4 py-3 bg-[#262421] rounded-xl border border-white/5 shadow-lg">
                 <div className="flex items-center gap-4">
                   <div className="relative w-12 h-12 bg-[#3c3a37] rounded-lg overflow-hidden border border-white/10 ring-2 ring-transparent">
-                    {opponent ? <img src={opponent.avatar} className="w-full h-full object-cover" alt="opponent" /> : <div className="w-full h-full flex items-center justify-center"><i className="fas fa-robot text-gray-500"></i></div>}
-                    {botThinking && (
-                      <div className="absolute inset-0 bg-[#81b64c]/30 flex items-center justify-center backdrop-blur-sm">
-                        <i className="fas fa-microchip text-white text-base animate-spin"></i>
-                      </div>
-                    )}
+                    {opponent ? <img src={opponent.avatar} className="w-full h-full object-cover" alt="opponent" /> : <div className="w-full h-full flex items-center justify-center"><i className="fas fa-user text-gray-500"></i></div>}
                   </div>
                   <div className="flex flex-col">
-                    <h3 className="font-bold text-base truncate max-w-[150px]">{opponent?.name || (gameMode === GameMode.ONLINE ? 'Aguardando oponente...' : 'Treinamento')}</h3>
+                    <h3 className="font-bold text-base truncate max-w-[150px]">{opponent?.name || (gameMode === GameMode.ONLINE ? 'Aguardando oponente...' : 'Treinamento Local')}</h3>
                     <div className="text-[10px] font-black uppercase tracking-tighter text-gray-500">
-                      {botThinking ? <span className="text-[#81b64c] animate-pulse">Pensando...</span> : `ELO ${opponent?.elo || '?'}`}
+                      {`ELO ${opponent?.elo || '?'}`}
                     </div>
                   </div>
                 </div>
@@ -287,29 +248,6 @@ const App: React.FC = () => {
                     <button onClick={resetGame} className="bg-[#81b64c] hover:bg-[#95c65d] px-12 md:px-16 py-4 md:py-5 rounded-xl font-black text-lg md:text-xl shadow-[0_6px_0_#456528] active:translate-y-1">NOVA PARTIDA</button>
                   </div>
                 )}
-
-                {showBotSelector && (
-                  <div className="absolute inset-0 z-50 bg-[#1a1917]/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 animate-in slide-in-from-bottom-10">
-                    <h2 className="text-2xl md:text-3xl font-black mb-10 text-white italic uppercase tracking-tight">Desafie a IA</h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md">
-                      {[
-                        { elo: 800, name: 'Lucas', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=lucas' },
-                        { elo: 1600, name: 'Sofia', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=sofia' },
-                        { elo: 2400, name: 'Marco', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=marco' },
-                        { elo: 3200, name: 'Alpha', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=alpha' }
-                      ].map(bot => (
-                        <button key={bot.elo} onClick={() => startAiGame(bot)} className="bg-[#262421] p-4 md:p-5 rounded-2xl border border-white/5 hover:border-[#81b64c] flex items-center gap-4 group transition-all">
-                          <img src={bot.avatar} className="w-12 h-12 md:w-14 md:h-14 rounded-xl shadow-md group-hover:scale-105" alt="bot" />
-                          <div className="text-left">
-                            <div className="font-bold text-white group-hover:text-[#81b64c]">{bot.name}</div>
-                            <div className="text-[10px] text-gray-500 font-black uppercase">ELO {bot.elo}</div>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                    <button onClick={() => setShowBotSelector(false)} className="mt-10 text-gray-500 hover:text-white uppercase text-[10px] font-bold tracking-[0.2em]">Cancelar</button>
-                  </div>
-                )}
               </div>
 
               {/* Player UI */}
@@ -333,10 +271,9 @@ const App: React.FC = () => {
                 onUndo={resetGame} 
                 onResign={() => setGameOver('Partida abandonada.')} 
                 turn={turn} 
-                whiteTimer={timers.w} 
-                blackTimer={timers.b} 
+                whiteTimer={600} 
+                blackTimer={600} 
                 gameMode={gameMode} 
-                onPlayBot={() => setShowBotSelector(true)} 
                 onlineRoom={onlineRoom}
                 onCreateOnline={createOnlineRoom}
               />

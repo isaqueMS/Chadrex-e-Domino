@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, DominoTile, DominoMove, DominoGameState, DominoChatMessage, DominoMode } from '../types';
 import { createFullSet, shuffleSet, canPlayTile, calculatePoints } from '../services/dominoLogic';
 import { db } from '../services/firebase';
-import { analyzeDominoMove } from '../services/ai';
 
 const QUICK_EMOJIS = ['🎲', '🎯', '🔥', '🏆', '💪', '🤝', '🤫', '💀', '⚡', '🧠'];
 
@@ -103,8 +102,6 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const [chatInput, setChatInput] = useState('');
   const [copied, setCopied] = useState(false);
   const [gameMode, setLocalGameMode] = useState<DominoMode>('individual');
-  const [aiTip, setAiTip] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -215,7 +212,6 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
       winningTeam: null,
       isLocked: false
     });
-    setAiTip(null);
   };
 
   const drawTile = () => {
@@ -335,15 +331,6 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
       checkLockedGame((gameState.turnIndex + 1) % players.length);
     }
     setPendingSelection(null);
-    setAiTip(null);
-  };
-
-  const getAiSuggestion = async () => {
-    if (!gameState || !isMyTurn || isAnalyzing) return;
-    setIsAnalyzing(true);
-    const suggestion = await analyzeDominoMove(gameState.board || [], myHand);
-    setAiTip(suggestion || "Sem sugestões no momento.");
-    setIsAnalyzing(false);
   };
 
   const players = gameState?.players || [];
@@ -426,13 +413,6 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             </div>
           )}
 
-          {/* AI Tip Bar */}
-          {aiTip && (
-            <div className="absolute top-8 left-1/2 -translate-x-1/2 bg-[#262421]/90 backdrop-blur-md px-8 py-4 rounded-full border border-purple-500/30 shadow-2xl z-40 max-w-md animate-in slide-in-from-top-4">
-              <p className="text-xs font-bold text-purple-400 italic tracking-tight">{aiTip}</p>
-            </div>
-          )}
-
           {pendingSelection && (
             <div className="absolute inset-0 z-50 bg-black/90 backdrop-blur-xl flex flex-col items-center justify-center animate-in fade-in duration-300">
                <h3 className="text-3xl font-black text-[#81b64c] uppercase tracking-[0.4em] mb-20 italic">DIRECIONAR FLUXO</h3>
@@ -488,13 +468,6 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             </div>
 
             <div className="flex gap-4 w-full md:w-auto">
-              <button 
-                onClick={getAiSuggestion} 
-                disabled={!isMyTurn || isAnalyzing}
-                className={`h-16 px-8 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-4 bg-purple-500/10 border-2 border-purple-500/20 text-purple-400 hover:bg-purple-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed`}
-              >
-                <i className={`fas ${isAnalyzing ? 'fa-spinner fa-spin' : 'fa-brain'} text-xl`}></i> Análise AI
-              </button>
               <button disabled={!isMyTurn || boneyard.length === 0 || canIPlay} onClick={drawTile} className={`flex-1 md:flex-none h-16 px-10 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-4 border-2 ${(!isMyTurn || boneyard.length === 0 || canIPlay) ? 'bg-[#1a1917] border-transparent text-gray-700 opacity-40 cursor-not-allowed' : 'bg-[#3c3a37] border-white/5 text-white hover:bg-[#4a4844] shadow-2xl'}`}>
                 <i className="fas fa-plus-square text-xl"></i> COMPRAR
               </button>
