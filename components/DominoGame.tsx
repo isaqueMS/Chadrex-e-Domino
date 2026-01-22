@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { User, DominoTile, DominoMove, DominoGameState, DominoChatMessage } from '../types';
+import { User, DominoTile, DominoMove, DominoGameState, DominoChatMessage, DominoMode } from '../types';
 import { createFullSet, shuffleSet, canPlayTile } from '../services/dominoLogic';
 import { db } from '../services/firebase';
+
+const QUICK_EMOJIS = ['♟️', '🎲', '🧩', '🔥', '🧠', '🦾', '⚡', '🏆', '🤝', '💀'];
 
 const IndustrialTile: React.FC<{ 
   tile?: DominoTile; 
@@ -12,14 +14,14 @@ const IndustrialTile: React.FC<{
   highlight?: boolean;
   isBoardPiece?: boolean;
   isClosed?: boolean;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
 }> = ({ tile, isFlipped, onClick, disabled, highlight, isBoardPiece, isClosed, size = 'md' }) => {
   if (isClosed) {
     return (
-      <div className={`relative ${size === 'sm' ? 'w-6 h-10' : 'w-8 h-14'} bg-[#1a1a1a] rounded-lg border border-white/10 shrink-0 shadow-lg`}
+      <div className={`relative ${size === 'sm' ? 'w-8 h-12' : size === 'md' ? 'w-10 h-16' : 'w-14 h-22'} bg-[#1a1a1a] rounded-lg border border-white/10 shrink-0 shadow-lg`}
            style={{ backgroundImage: 'linear-gradient(145deg, #222 0%, #000 100%)' }}>
-        <div className="absolute inset-1.5 border border-[#81b64c]/5 rounded-sm flex items-center justify-center">
-          <div className="w-1 h-1 bg-[#81b64c]/20 rounded-full animate-pulse" />
+        <div className="absolute inset-2 border border-[#81b64c]/10 rounded-sm flex items-center justify-center">
+          <div className="w-1.5 h-1.5 bg-[#81b64c]/30 rounded-full animate-pulse" />
         </div>
       </div>
     );
@@ -33,11 +35,11 @@ const IndustrialTile: React.FC<{
   const renderDots = (n: number) => {
     const dotPos = [[], [4], [0, 8], [0, 4, 8], [0, 2, 6, 8], [0, 2, 4, 6, 8], [0, 2, 3, 5, 6, 8]][n];
     return (
-      <div className={`grid grid-cols-3 grid-rows-3 gap-[1px] w-full h-full ${size === 'sm' ? 'p-1' : 'p-1.5'}`}>
+      <div className={`grid grid-cols-3 grid-rows-3 gap-[1px] w-full h-full ${size === 'sm' ? 'p-1' : size === 'xl' ? 'p-3' : 'p-2'}`}>
         {[...Array(9)].map((_, i) => (
           <div key={i} className="flex items-center justify-center">
             {dotPos.includes(i) && (
-              <div className={`rounded-full shadow-[0_0_8px_#81b64c] transition-colors duration-300 ${highlight ? 'bg-[#f6f669]' : 'bg-[#81b64c]'} ${size === 'sm' ? 'w-[60%] h-[60%]' : 'w-[75%] h-[75%]'}`} />
+              <div className={`rounded-full shadow-[0_0_12px_#81b64c] transition-all duration-300 ${highlight ? 'bg-[#f6f669] scale-125' : 'bg-[#81b64c]'} ${size === 'sm' ? 'w-1.5 h-1.5' : size === 'md' ? 'w-2 h-2' : size === 'xl' ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5'}`} />
             )}
           </div>
         ))}
@@ -48,30 +50,31 @@ const IndustrialTile: React.FC<{
   const isBucha = tile.sideA === tile.sideB;
   const isHorizontal = isBoardPiece ? !isBucha : false;
 
-  const dimensions = {
-    sm: isHorizontal ? 'w-14 h-7' : 'w-7 h-14',
-    md: isHorizontal ? 'w-20 h-10' : 'w-10 h-20',
-    lg: isHorizontal ? 'w-24 h-12' : 'w-12 h-24',
+  const dims = {
+    sm: isHorizontal ? 'w-16 h-8' : 'w-8 h-16',
+    md: isHorizontal ? 'w-24 h-12' : 'w-12 h-24',
+    lg: isHorizontal ? 'w-28 h-14' : 'w-14 h-28',
+    xl: isHorizontal ? 'w-36 h-18' : 'w-18 h-36',
   }[size];
 
   return (
     <div 
       onClick={!disabled ? onClick : undefined}
-      className={`relative flex transition-all duration-300 shrink-0 border border-white/5 
-        ${!disabled ? 'cursor-pointer hover:border-[#81b64c] hover:scale-105 active:scale-95' : 'cursor-default'} 
-        ${dimensions}
-        ${isBoardPiece ? 'rounded-sm' : 'rounded-xl'}
-        ${highlight ? 'ring-2 ring-[#81b64c]/50 border-[#81b64c]' : ''}
+      className={`relative flex transition-all duration-300 shrink-0 border 
+        ${!disabled ? 'cursor-pointer hover:border-[#81b64c] hover:scale-110 hover:-translate-y-2 active:scale-95' : 'cursor-default'} 
+        ${dims}
+        ${isBoardPiece ? 'rounded-sm border-white/20' : 'rounded-2xl border-white/30'}
+        ${highlight && !disabled ? 'ring-[4px] ring-[#81b64c]/40 border-[#81b64c] z-20 shadow-[0_0_20px_rgba(129,182,76,0.4)]' : ''}
       `}
       style={{ 
-        backgroundImage: 'linear-gradient(145deg, #2a2a2a 0%, #0a0a0a 100%)', 
-        boxShadow: isBoardPiece ? '2px 2px 8px rgba(0,0,0,0.6)' : '0 8px 20px rgba(0,0,0,0.8)' 
+        backgroundImage: 'linear-gradient(145deg, #333 0%, #050505 100%)', 
+        boxShadow: isBoardPiece ? '4px 4px 12px rgba(0,0,0,0.8)' : '0 15px 35px rgba(0,0,0,0.9)' 
       }}
     >
-      <div className="flex-1 flex items-center justify-center">{renderDots(a)}</div>
-      <div className={`${isHorizontal ? 'w-[1.5px] h-3/4 my-auto bg-[#333]' : 'h-[1.5px] w-3/4 mx-auto bg-[#333]'}`} />
-      <div className="flex-1 flex items-center justify-center">{renderDots(b)}</div>
-      <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${size === 'sm' ? 'w-1.5 h-1.5' : 'w-2 h-2'} bg-[#444] rounded-sm rotate-45 border border-white/10`} />
+      <div className={`${isHorizontal ? 'flex-1 h-full' : 'h-1/2 w-full'} flex items-center justify-center`}>{renderDots(a)}</div>
+      <div className={`${isHorizontal ? 'w-[2px] h-4/5 my-auto bg-[#444]' : 'h-[2px] w-4/5 mx-auto bg-[#444] shadow-inner'}`} />
+      <div className={`${isHorizontal ? 'flex-1 h-full' : 'h-1/2 w-full'} flex items-center justify-center`}>{renderDots(b)}</div>
+      <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ${size === 'sm' ? 'w-1.5 h-1.5' : 'w-3 h-3'} bg-[#555] rounded-sm rotate-45 border border-white/10 shadow-lg`} />
     </div>
   );
 };
@@ -82,6 +85,7 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const [pendingSelection, setPendingSelection] = useState<{ tile: DominoTile, options: any[] } | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [copied, setCopied] = useState(false);
+  const [gameMode, setLocalGameMode] = useState<DominoMode>('individual');
   const boardRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -93,6 +97,7 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
       const val = snap.val();
       if (val) {
         setGameState(val);
+        setLocalGameMode(val.mode || 'individual');
         const players = val.players || [];
         if (val.status === 'waiting' && !players.some((p: User) => p.id === currentUser.id) && players.length < 4) {
           roomRef.child('players').set([...players, currentUser]);
@@ -112,7 +117,7 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   }, [gameState?.chat]);
 
   useEffect(() => {
-    if (boardRef.current) {
+    if (boardRef.current && gameState?.board) {
       const { scrollWidth, clientWidth } = boardRef.current;
       boardRef.current.scrollTo({
         left: scrollWidth - clientWidth / 2,
@@ -130,12 +135,19 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
       hands: {},
       boneyard: shuffleSet(createFullSet()),
       status: 'waiting',
+      mode: 'individual',
       createdAt: Date.now(),
       chat: {}
     };
     db.ref(`domino_rooms/${id}`).set(newRoomData);
     setRoomId(id);
     window.history.replaceState(null, '', `?domino=${id}`);
+  };
+
+  const toggleMode = () => {
+    if (!roomId || gameState?.status !== 'waiting') return;
+    const newMode = gameMode === 'individual' ? 'teams' : 'individual';
+    db.ref(`domino_rooms/${roomId}`).update({ mode: newMode });
   };
 
   const copyInviteLink = () => {
@@ -154,25 +166,35 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     });
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim() || !roomId) return;
-
+  const handleSendMessage = (text: string) => {
+    if (!text.trim() || !roomId) return;
     db.ref(`domino_rooms/${roomId}/chat`).push({
       user: currentUser.name,
-      text: chatInput,
+      text,
       timestamp: Date.now()
     });
     setChatInput('');
   };
 
+  const addEmoji = (emoji: string) => {
+    setChatInput(prev => prev + emoji);
+  };
+
   const startMatch = () => {
     if (!gameState || !roomId) return;
-    const fullSet = shuffleSet(createFullSet());
     const players = gameState.players || [];
+    if (players.length < 2) return;
+    if (gameState.mode === 'teams' && players.length !== 4) {
+      sendSystemMessage("O modo DUPLAS requer exatamente 4 operadores.");
+      return;
+    }
+
+    // Garantir embaralhamento aleatório robusto antes da distribuição
+    const fullSet = shuffleSet(createFullSet());
     const hands: Record<string, DominoTile[]> = {};
     
     players.forEach((p, i) => {
+      // 7 peças por jogador
       hands[p.id] = fullSet.slice(i * 7, (i + 1) * 7);
     });
 
@@ -184,9 +206,10 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
       boneyard,
       board: [],
       turnIndex: 0,
-      winnerId: null
+      winnerId: null,
+      winningTeam: null
     });
-    sendSystemMessage("Sequência tática iniciada. Boa sorte.");
+    sendSystemMessage(`Sequência tática [${gameState.mode.toUpperCase()}] iniciada.`);
   };
 
   const drawTile = () => {
@@ -245,6 +268,13 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
     if (newHand.length === 0) {
       updates.status = 'finished';
       updates.winnerId = currentUser.id;
+      
+      if (gameState.mode === 'teams') {
+        // Encontra o index do vencedor para determinar o time
+        const winnerIndex = players.findIndex(p => p.id === currentUser.id);
+        updates.winningTeam = winnerIndex % 2; // Time 0 (idx 0 e 2) ou Time 1 (idx 1 e 3)
+      }
+      
       sendSystemMessage(`Operação concluída. Vencedor: ${currentUser.name}`);
     }
 
@@ -259,7 +289,6 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   const currentTurnPlayer = players[turnIndex];
   const isMyTurn = currentTurnPlayer?.id === currentUser.id;
   const canIPlay = myHand.some(t => canPlayTile(t, gameState?.board || []).length > 0);
-  // Fix: Explicitly type chatMessages to DominoChatMessage[] to resolve 'unknown' inference in map
   const chatMessages: DominoChatMessage[] = gameState?.chat ? Object.values(gameState.chat) : [];
 
   if (!roomId) return (
@@ -273,7 +302,7 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
   );
 
   return (
-    <div className="flex flex-col lg:flex-row h-full w-full max-w-[1400px] gap-6 overflow-hidden pb-20 px-4 relative">
+    <div className="flex flex-col lg:flex-row h-full w-full max-w-[1400px] gap-6 overflow-hidden pb-24 px-4 relative">
       
       {/* Coluna Principal: Game Area */}
       <div className="flex-1 flex flex-col gap-4 overflow-hidden">
@@ -292,8 +321,13 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                   {copied ? 'COPIADO' : 'CONVIDAR'}
                 </button>
              </div>
-             <div className="bg-black/40 px-3 py-1.5 rounded-full text-[9px] font-black text-gray-500 uppercase tracking-widest border border-white/5 w-fit">
-               Boneyard: {boneyard.length} UNITS
+             <div className="flex gap-2">
+               <div className="bg-black/40 px-3 py-1.5 rounded-full text-[9px] font-black text-gray-500 uppercase tracking-widest border border-white/5 w-fit">
+                 Dorminhoco: {boneyard.length}
+               </div>
+               <div className="bg-[#81b64c]/10 px-3 py-1.5 rounded-full text-[9px] font-black text-[#81b64c] uppercase tracking-widest border border-[#81b64c]/20 w-fit">
+                 {gameMode === 'individual' ? 'Individual' : 'Duplas'}
+               </div>
              </div>
           </div>
 
@@ -301,11 +335,14 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
             {players.map((p, i) => {
               const playerHandCount = (gameState?.hands?.[p.id] || []).length;
               const active = turnIndex === i;
+              const isPartner = gameMode === 'teams' && ((players.findIndex(pl => pl.id === currentUser.id) % 2) === (i % 2));
+              
               return (
                 <div key={p.id} className={`flex items-center gap-3 px-3 py-2 rounded-2xl border transition-all duration-300 ${active ? 'bg-[#81b64c]/10 border-[#81b64c] scale-105 shadow-lg' : 'bg-[#1a1917] border-transparent opacity-60'}`}>
                   <div className="relative">
                     <img src={p.avatar} className="w-8 h-8 rounded-xl bg-black/50 border border-white/10" alt="avatar" />
                     {active && <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-[#81b64c] rounded-full animate-pulse shadow-[0_0_8px_#81b64c]" />}
+                    {isPartner && <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 bg-blue-500 rounded-full shadow-[0_0_8px_#3b82f6] flex items-center justify-center text-[6px] text-white"><i className="fas fa-link"></i></div>}
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[10px] font-black uppercase text-white leading-none truncate max-w-[70px]">{p.name}</span>
@@ -318,35 +355,46 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
         </div>
 
         {/* Board */}
-        <div className="flex-1 min-h-0 bg-[#121212] rounded-[3rem] border-[8px] md:border-[12px] border-[#262421] relative flex items-center justify-center overflow-hidden shadow-2xl z-0">
-          <div className="absolute inset-0 opacity-[0.05] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '50px 50px' }} />
+        <div className="flex-1 min-h-[300px] bg-[#0d0d0d] rounded-[3rem] border-[8px] md:border-[12px] border-[#262421] relative flex items-center justify-center overflow-hidden shadow-2xl z-0">
+          <div className="absolute inset-0 opacity-[0.05] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
           
           {gameState?.status === 'waiting' ? (
-            <div className="z-10 text-center flex flex-col items-center p-10">
-              <h2 className="text-3xl md:text-4xl font-black text-white/20 mb-10 uppercase tracking-[0.3em]">Aguardando Operação</h2>
-              {players.length >= 2 ? (
-                <button onClick={startMatch} className="bg-[#81b64c] hover:bg-[#95c65d] px-16 py-5 rounded-2xl font-black text-white shadow-[0_6px_0_#456528] active:translate-y-1 transition-all uppercase tracking-widest text-lg">SINCRONIZAR</button>
+            <div className="z-10 text-center flex flex-col items-center p-10 bg-[#1a1917]/80 backdrop-blur-md rounded-[3rem] border border-white/5">
+              <h2 className="text-3xl md:text-4xl font-black text-[#81b64c] mb-6 uppercase tracking-[0.3em] italic">Aguardando Operadores</h2>
+              
+              <div className="flex flex-col gap-6 mb-10">
+                <div className="flex gap-4">
+                  <button onClick={toggleMode} className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all ${gameMode === 'individual' ? 'bg-[#81b64c] text-white border-[#81b64c]' : 'bg-[#262421] text-gray-500 border-white/10'}`}>Individual</button>
+                  <button onClick={toggleMode} className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all ${gameMode === 'teams' ? 'bg-[#81b64c] text-white border-[#81b64c]' : 'bg-[#262421] text-gray-500 border-white/10'}`}>Duplas (2x2)</button>
+                </div>
+                
+                <div className="text-gray-400 font-bold uppercase text-[11px] tracking-widest">
+                  Status: {players.length} / {gameMode === 'individual' ? '2-4' : '4'} Conectados
+                </div>
+              </div>
+
+              {((gameMode === 'individual' && players.length >= 2) || (gameMode === 'teams' && players.length === 4)) ? (
+                <button onClick={startMatch} className="bg-[#81b64c] hover:bg-[#95c65d] px-20 py-6 rounded-2xl font-black text-white shadow-[0_8px_0_#456528] active:translate-y-1 transition-all uppercase tracking-widest text-xl">INICIAR OPERAÇÃO</button>
               ) : (
-                <div className="text-gray-600 font-bold uppercase text-[10px] tracking-widest animate-pulse">Min. 2 Operadores Requeridos ({players.length}/2)</div>
+                <div className="text-[#81b64c] font-black uppercase text-[12px] tracking-[0.2em] animate-pulse py-4 border-2 border-dashed border-[#81b64c]/30 rounded-2xl px-8">Aguardando mais operadores...</div>
               )}
             </div>
           ) : (
             <div 
               ref={boardRef} 
-              className="flex items-center gap-1.5 px-10 md:px-40 py-20 overflow-x-auto overflow-y-hidden w-full h-full custom-scrollbar no-scrollbar"
-              style={{ scrollBehavior: 'smooth' }}
+              className="flex items-center gap-2 px-10 md:px-40 py-10 overflow-x-auto overflow-y-hidden w-full h-full custom-scrollbar no-scrollbar scroll-smooth"
             >
-              <div className="flex-shrink-0 w-[5%] md:w-[15%]" />
+              <div className="flex-shrink-0 w-[10%] md:w-[20%]" />
               {(gameState?.board || []).map((m, i) => (
                 <IndustrialTile key={`${m.tile.id}-${i}`} tile={m.tile} isFlipped={m.isFlipped} isBoardPiece size="md" />
               ))}
-              <div className="flex-shrink-0 w-[5%] md:w-[15%]" />
+              <div className="flex-shrink-0 w-[10%] md:w-[20%]" />
             </div>
           )}
 
           {/* Overlay de Seleção */}
           {pendingSelection && (
-            <div className="absolute inset-0 z-[100] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center p-6 animate-in fade-in duration-300">
+            <div className="absolute inset-0 z-[100] bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 animate-in fade-in duration-300">
               <h3 className="text-xl font-black text-white uppercase tracking-[0.4em] mb-12">Direcionar Fluxo</h3>
               <div className="flex gap-8 md:gap-16">
                 {pendingSelection.options.map((opt, i) => (
@@ -355,8 +403,8 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                     onClick={() => executeMove(pendingSelection.tile, opt)}
                     className="group flex flex-col items-center gap-6"
                   >
-                    <div className="bg-[#262421] p-6 md:p-10 rounded-3xl border-2 border-[#81b64c]/20 group-hover:border-[#81b64c] transition-all transform group-hover:scale-110 shadow-2xl">
-                       <i className={`fas fa-chevron-${opt.side === 'left' ? 'left' : 'right'} text-4xl md:text-5xl text-[#81b64c]`}></i>
+                    <div className="bg-[#262421] p-8 md:p-12 rounded-3xl border-2 border-[#81b64c]/20 group-hover:border-[#81b64c] transition-all transform group-hover:scale-110 shadow-2xl">
+                       <i className={`fas fa-chevron-${opt.side === 'left' ? 'left' : 'right'} text-4xl md:text-6xl text-[#81b64c]`}></i>
                     </div>
                     <span className="text-[10px] md:text-[11px] font-black uppercase text-[#81b64c] tracking-[0.2em]">{opt.side === 'left' ? 'TERMINAL ALFA' : 'TERMINAL ÔMEGA'}</span>
                   </button>
@@ -369,70 +417,82 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
           {gameState?.status === 'finished' && (
             <div className="absolute inset-0 bg-black/95 flex flex-col items-center justify-center z-[200] p-10 backdrop-blur-xl">
               <h2 className="text-4xl md:text-7xl font-black text-[#81b64c] mb-4 uppercase italic tracking-tighter drop-shadow-xl text-center">SISTEMA DOMINADO</h2>
-              <p className="text-white text-lg md:text-xl font-bold mb-12 uppercase tracking-widest">OPERADOR: {players.find(p => p.id === gameState.winnerId)?.name}</p>
-              <button onClick={startMatch} className="bg-[#81b64c] hover:bg-[#95c65d] px-16 md:px-20 py-5 md:py-6 rounded-3xl font-black text-lg md:text-xl shadow-[0_8px_0_#456528]">NOVA OPERAÇÃO</button>
+              <div className="flex flex-col items-center gap-2 mb-12">
+                <p className="text-white text-lg md:text-xl font-bold uppercase tracking-widest">VENCEDOR: {players.find(p => p.id === gameState.winnerId)?.name}</p>
+                {gameState.mode === 'teams' && (
+                  <div className="bg-blue-500/20 text-blue-400 px-6 py-2 rounded-full border border-blue-500/30 text-xs font-black uppercase tracking-widest">Vitória do Time {gameState.winningTeam === 0 ? 'ALFA (1&3)' : 'BETA (2&4)'}</div>
+                )}
+              </div>
+              <button onClick={startMatch} className="bg-[#81b64c] hover:bg-[#95c65d] px-16 md:px-20 py-5 md:py-6 rounded-3xl font-black text-lg md:text-xl shadow-[0_8px_0_#456528]">REINICIAR SEQUÊNCIA</button>
             </div>
           )}
         </div>
 
-        {/* Control Panel / Hand Area */}
-        <div className="bg-[#262421] p-4 md:p-6 rounded-[2.5rem] border border-white/5 flex flex-col md:flex-row gap-6 shadow-2xl relative overflow-hidden z-10">
-          <div className="flex flex-row md:flex-col justify-between md:justify-center gap-4 min-w-0 md:min-w-[180px]">
-            <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full transition-all duration-500 ${isMyTurn ? 'bg-[#81b64c] shadow-[0_0_12px_#81b64c]' : 'bg-gray-800'}`} />
-              <span className={`text-[10px] font-black uppercase tracking-widest ${isMyTurn ? 'text-[#81b64c]' : 'text-gray-600'} truncate`}>
-                {isMyTurn ? 'OPERADOR ATIVO' : 'STANDBY'}
-              </span>
+        {/* Control Panel / Hand Area (OPERADOR ATIVO) */}
+        <div className="bg-[#262421] p-5 md:p-8 rounded-[3rem] border-t-4 border-[#81b64c]/30 flex flex-col gap-6 shadow-2xl relative overflow-hidden z-10">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-4">
+              <div className={`w-4 h-4 rounded-full transition-all duration-500 ${isMyTurn ? 'bg-[#81b64c] shadow-[0_0_15px_#81b64c]' : 'bg-gray-800'}`} />
+              <div className="flex flex-col">
+                <span className={`text-[12px] font-black uppercase tracking-[0.3em] ${isMyTurn ? 'text-[#81b64c]' : 'text-gray-600'}`}>
+                  {isMyTurn ? 'MODO DE ATAQUE ATIVO' : 'MODO STANDBY'}
+                </span>
+                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-1">Sua Mão Tática</span>
+              </div>
             </div>
             
-            <div className="flex flex-row md:flex-col gap-2">
+            <div className="flex gap-3">
               <button 
                 disabled={!isMyTurn || boneyard.length === 0 || canIPlay}
                 onClick={drawTile}
-                className={`py-2 md:py-3 px-3 md:px-4 rounded-xl font-black text-[9px] md:text-[10px] uppercase tracking-widest transition-all ${(!isMyTurn || boneyard.length === 0 || canIPlay) ? 'bg-[#1a1917] text-gray-700 opacity-50 cursor-not-allowed' : 'bg-[#3c3a37] text-white hover:bg-[#4a4844] shadow-lg active:scale-95'}`}
+                className={`h-12 px-6 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all flex items-center gap-3 ${(!isMyTurn || boneyard.length === 0 || canIPlay) ? 'bg-[#1a1917] text-gray-700 opacity-50 cursor-not-allowed' : 'bg-[#3c3a37] text-white hover:bg-[#4a4844] shadow-lg active:scale-95 border border-white/5'}`}
               >
-                <i className="fas fa-plus-circle mr-1 md:mr-2"></i> COMPRAR
+                <i className="fas fa-hand-holding-medical text-base"></i> COMPRAR PEÇA
               </button>
               <button 
                 disabled={!isMyTurn || boneyard.length > 0 || canIPlay}
                 onClick={passTurn}
-                className={`py-2 md:py-3 px-3 md:px-4 rounded-xl font-black text-[9px] md:text-[10px] uppercase tracking-widest transition-all ${(!isMyTurn || boneyard.length > 0 || canIPlay) ? 'bg-[#1a1917] text-gray-700 opacity-50 cursor-not-allowed' : 'bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white shadow-lg active:scale-95'}`}
+                className={`h-12 px-6 rounded-2xl font-black text-[11px] uppercase tracking-widest transition-all flex items-center gap-3 ${(!isMyTurn || boneyard.length > 0 || canIPlay) ? 'bg-[#1a1917] text-gray-700 opacity-50 cursor-not-allowed' : 'bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white shadow-lg active:scale-95 border border-red-500/20'}`}
               >
-                <i className="fas fa-forward mr-1 md:mr-2"></i> PASSAR
+                <i className="fas fa-forward text-base"></i> ABORTAR TURNO
               </button>
             </div>
           </div>
 
-          <div className="flex-1 flex items-center gap-3 md:gap-4 overflow-x-auto py-2 md:py-4 px-3 md:px-4 custom-scrollbar no-scrollbar bg-black/20 rounded-2xl md:rounded-3xl border border-white/5 shadow-inner">
-            {myHand.map((t) => (
-              <IndustrialTile 
-                key={t.id} 
-                tile={t} 
-                onClick={() => handlePlay(t)} 
-                disabled={!isMyTurn} 
-                highlight={isMyTurn && canPlayTile(t, gameState?.board || []).length > 0} 
-                size="lg"
-              />
-            ))}
-            {myHand.length === 0 && gameState?.status === 'playing' && (
-              <div className="flex-1 flex items-center justify-center opacity-10 uppercase font-black tracking-widest text-xs">Aguardando...</div>
+          <div className="flex-1 flex items-center gap-4 md:gap-8 overflow-x-auto py-8 px-8 custom-scrollbar no-scrollbar bg-black/60 rounded-[2.5rem] border border-white/5 shadow-inner min-h-[220px]">
+            {myHand.length === 0 && gameState?.status === 'playing' ? (
+              <div className="flex-1 flex flex-col items-center justify-center opacity-20 uppercase font-black tracking-[0.8em] text-sm animate-pulse">
+                <i className="fas fa-box-open text-4xl mb-4"></i>
+                Arsenal Esgotado
+              </div>
+            ) : (
+              myHand.map((t) => (
+                <IndustrialTile 
+                  key={t.id} 
+                  tile={t} 
+                  onClick={() => handlePlay(t)} 
+                  disabled={!isMyTurn} 
+                  highlight={isMyTurn && canPlayTile(t, gameState?.board || []).length > 0} 
+                  size="xl"
+                />
+              ))
             )}
           </div>
         </div>
       </div>
 
       {/* Coluna Lateral: Chat Industrial */}
-      <div className="w-full lg:w-[320px] bg-[#262421] rounded-[2.5rem] border border-white/5 flex flex-col overflow-hidden shadow-2xl h-[400px] lg:h-auto mb-20 lg:mb-0">
+      <div className="w-full lg:w-[320px] bg-[#262421] rounded-[2.5rem] border border-white/5 flex flex-col overflow-hidden shadow-2xl h-[450px] lg:h-auto mb-24 lg:mb-0">
         <div className="bg-[#1a1917] p-5 border-b border-white/5 flex items-center gap-3">
           <i className="fas fa-comments text-[#81b64c]"></i>
-          <h3 className="font-black text-xs uppercase tracking-widest text-white">Interface de Chat</h3>
+          <h3 className="font-black text-xs uppercase tracking-widest text-white">COMMS FEED</h3>
         </div>
         
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
           {chatMessages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center opacity-20 text-center">
               <i className="fas fa-terminal text-4xl mb-4"></i>
-              <p className="text-[10px] font-black uppercase tracking-widest">Nenhuma transmissão registrada</p>
+              <p className="text-[10px] font-black uppercase tracking-widest">SISTEMA EM SILÊNCIO</p>
             </div>
           ) : (
             chatMessages.map((m, i) => (
@@ -442,10 +502,10 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
                     {m.user}
                   </span>
                 )}
-                <div className={`px-4 py-2.5 rounded-2xl text-[11px] leading-relaxed shadow-sm break-words ${
-                  m.user === 'SISTEMA' ? 'bg-transparent text-[#81b64c] italic text-center text-[9px]' : 
-                  m.user === currentUser.name ? 'bg-[#81b64c]/10 text-white border border-[#81b64c]/20 self-end rounded-tr-none' : 
-                  'bg-[#1a1917] text-gray-300 border border-white/5 self-start rounded-tl-none'
+                <div className={`px-4 py-2.5 rounded-2xl text-[11px] leading-relaxed shadow-sm break-words border transition-all hover:brightness-110 ${
+                  m.user === 'SISTEMA' ? 'bg-transparent text-[#81b64c] border-transparent italic text-center text-[9px] tracking-tight' : 
+                  m.user === currentUser.name ? 'bg-[#81b64c]/10 text-white border-[#81b64c]/30 self-end rounded-tr-none' : 
+                  'bg-[#1a1917] text-gray-300 border-white/10 self-start rounded-tl-none'
                 }`}>
                   {m.text}
                 </div>
@@ -455,15 +515,21 @@ const DominoGame: React.FC<{ currentUser: User }> = ({ currentUser }) => {
           <div ref={chatEndRef} />
         </div>
 
-        <form onSubmit={handleSendMessage} className="p-4 bg-[#1a1917] border-t border-white/5 flex gap-2">
+        <div className="px-4 pb-2 pt-1 flex gap-2 justify-center bg-[#1a1917]/50">
+          {QUICK_EMOJIS.map(e => (
+            <button key={e} onClick={() => handleSendMessage(e)} className="text-sm hover:scale-125 transition-transform duration-200">{e}</button>
+          ))}
+        </div>
+
+        <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(chatInput); }} className="p-4 bg-[#1a1917] border-t border-white/5 flex gap-2">
           <input 
             type="text" 
             value={chatInput} 
             onChange={(e) => setChatInput(e.target.value)} 
-            placeholder="Transmitir mensagem..." 
-            className="flex-1 bg-[#262421] border border-white/5 rounded-xl px-4 py-3 text-xs outline-none focus:ring-1 focus:ring-[#81b64c]/50 transition-all text-white placeholder:text-gray-600 font-mono"
+            placeholder="Transmitir..." 
+            className="flex-1 bg-[#262421] border border-white/10 rounded-xl px-4 py-3 text-xs outline-none focus:ring-1 focus:ring-[#81b64c]/50 transition-all text-white placeholder:text-gray-600 font-mono shadow-inner"
           />
-          <button type="submit" className="bg-[#81b64c] w-10 h-10 rounded-xl flex items-center justify-center text-white hover:brightness-110 active:scale-95 transition-all">
+          <button type="submit" className="bg-[#81b64c] w-12 h-12 rounded-xl flex items-center justify-center text-white hover:brightness-110 active:scale-95 transition-all shadow-lg">
             <i className="fas fa-paper-plane"></i>
           </button>
         </form>

@@ -83,6 +83,8 @@ export interface DominoChatMessage {
   timestamp: number;
 }
 
+export type DominoMode = 'individual' | 'teams';
+
 export interface DominoGameState {
   players: User[];
   turnIndex: number;
@@ -90,7 +92,9 @@ export interface DominoGameState {
   hands: Record<string, DominoTile[]>;
   boneyard?: DominoTile[];
   status: 'waiting' | 'playing' | 'finished';
+  mode: DominoMode;
   winnerId?: string;
+  winningTeam?: number; // 0 para Jogadores 1 e 3, 1 para Jogadores 2 e 4
   chat?: Record<string, DominoChatMessage>;
 }
 
