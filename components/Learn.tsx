@@ -1,68 +1,115 @@
 
 import React, { useState } from 'react';
 import ChessBoard from './ChessBoard';
-import { parseFen, createInitialBoard } from '../services/chessLogic';
-import { Lesson } from '../types';
+import { Board, Lesson, Move } from '../types';
+import { parseFen, makeMove } from '../services/chessLogic';
 
 const LESSONS: Lesson[] = [
-  { id: '1', title: 'Como as Peças se Movem', description: 'Aprenda o básico de cada peça no tabuleiro.', category: 'Basics', fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR', icon: 'fa-chess-pawn' },
-  { id: '2', title: 'O Poder da Torre', description: 'Domine as colunas abertas com suas torres.', category: 'Tactics', fen: '8/8/8/4R3/8/8/8/8', icon: 'fa-chess-rook' },
-  { id: '3', title: 'Xeque-Mate do Pastor', description: 'Uma das armadilhas mais famosas do xadrez.', category: 'Tactics', fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 0 1', icon: 'fa-bolt' },
-  { id: '4', title: 'Finais de Peão', description: 'Como coroar seu peão e ganhar o jogo.', category: 'Endgames', fen: '8/4P3/8/4K3/8/8/3k4/8 w - - 0 1', icon: 'fa-chess-king' }
+  { id: '1', title: 'Fundamentos: Abertura', description: 'Domine o centro com peões e desenvolva suas peças menores (cavalos e bispos) para casas ativas antes do seu oponente.', category: 'Princípios', fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR', icon: 'fa-chess-pawn' },
+  { id: '2', title: 'Mate do Pastor', description: 'Aprenda a reconhecer a ameaça na casa f7 e como se defender contra o ataque rápido de Dama e Bispo.', category: 'Tática de Alerta', fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 0 1', icon: 'fa-bolt' },
+  { id: '3', title: 'Domínio da Sétima', description: 'Uma torre na sétima fileira é devastadora. Ela paralisia o rei inimigo e ataca a cadeia de peões por trás.', category: 'Estratégia', fen: '8/8/2r5/8/8/8/2R5/8 w - - 0 1', icon: 'fa-chess-rook' }
 ];
 
 const Learn: React.FC = () => {
-  const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
+  const [selected, setSelected] = useState<Lesson | null>(null);
+  const [board, setBoard] = useState<Board | null>(null);
+  const [history, setHistory] = useState<Move[]>([]);
 
-  if (selectedLesson) {
+  const startLesson = (lesson: Lesson) => {
+    setSelected(lesson);
+    setBoard(parseFen(lesson.fen));
+    setHistory([]);
+  };
+
+  const handleLessonMove = (move: Move) => {
+    if (!board) return;
+    const nextBoard = makeMove(board, move);
+    setBoard(nextBoard);
+    setHistory([...history, move]);
+  };
+
+  const resetSandbox = () => {
+    if (selected) {
+      setBoard(parseFen(selected.fen));
+      setHistory([]);
+    }
+  };
+
+  if (selected && board) {
     return (
-      <div className="flex flex-col lg:flex-row gap-6 w-full max-w-6xl items-center lg:items-start p-4">
-        <div className="w-full max-w-[600px] flex flex-col gap-4">
-          <button onClick={() => setSelectedLesson(null)} className="self-start text-gray-400 hover:text-white flex items-center gap-2 mb-2 font-bold text-sm uppercase">
-            <i className="fas fa-arrow-left"></i> Voltar para Lições
+      <div className="flex flex-col lg:flex-row gap-8 w-full max-w-6xl py-8 animate-in slide-in-from-right duration-500">
+        <div className="flex-1 w-full max-w-[640px] flex flex-col gap-4">
+          <button 
+            onClick={() => setSelected(null)} 
+            className="flex items-center gap-3 text-gray-500 hover:text-[#81b64c] uppercase text-[10px] font-black tracking-widest mb-2 transition-colors w-fit group"
+          >
+            <i className="fas fa-arrow-left group-hover:-translate-x-1 transition-transform"></i> Retornar ao Arquivo
           </button>
-          <ChessBoard board={parseFen(selectedLesson.fen)} onMove={() => {}} turn="w" lastMove={null} />
+          
+          <div className="bg-[#262421] p-1 rounded-xl shadow-2xl border border-white/5">
+            <ChessBoard board={board} onMove={handleLessonMove} turn="w" lastMove={history[history.length-1] || null} />
+          </div>
         </div>
-        <div className="w-full lg:w-[380px] bg-[#262421] rounded-xl p-8 border border-[#3c3a37] shadow-xl">
-           <div className="mb-6">
-              <span className="bg-[#81b64c]/20 text-[#81b64c] px-3 py-1 rounded text-[10px] font-bold uppercase tracking-wider">{selectedLesson.category}</span>
-              <h2 className="text-3xl font-bold mt-4">{selectedLesson.title}</h2>
-           </div>
-           <p className="text-gray-400 leading-relaxed mb-8">{selectedLesson.description}</p>
-           <div className="p-4 bg-[#1a1917] rounded-lg border border-white/5 space-y-4">
-              <h4 className="font-bold text-sm text-[#81b64c]">O que você vai aprender:</h4>
-              <ul className="text-xs space-y-2 text-gray-400">
-                <li className="flex items-center gap-2"><i className="fas fa-check text-[#81b64c]"></i> Posicionamento ideal</li>
-                <li className="flex items-center gap-2"><i className="fas fa-check text-[#81b64c]"></i> Estratégias fundamentais</li>
-                <li className="flex items-center gap-2"><i className="fas fa-check text-[#81b64c]"></i> Erros comuns para evitar</li>
-              </ul>
-           </div>
-           <button className="w-full bg-[#81b64c] py-4 rounded-xl font-bold mt-8 shadow-lg hover:scale-[1.02] transition-transform">INICIAR LIÇÃO PRÁTICA</button>
+
+        <div className="w-full lg:w-[420px] flex flex-col gap-6">
+          <div className="bg-[#262421] rounded-[3rem] p-10 border border-white/5 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#81b64c]/5 rounded-bl-full pointer-events-none" />
+            <span className="bg-[#81b64c]/10 text-[#81b64c] px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-[#81b64c]/20">
+              {selected.category}
+            </span>
+            <h2 className="text-4xl font-black mt-8 mb-6 leading-tight tracking-tighter">{selected.title}</h2>
+            <p className="text-gray-400 text-base leading-relaxed mb-10">{selected.description}</p>
+            
+            <div className="bg-[#1a1917] p-8 rounded-3xl border border-white/5 space-y-6 shadow-inner">
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-[#3c3a37] rounded-xl flex items-center justify-center">
+                  <i className="fas fa-flask text-[#81b64c]"></i>
+                </div>
+                <h4 className="font-black text-xs text-gray-200 uppercase tracking-widest">Sandbox Experimental</h4>
+              </div>
+              <p className="text-xs text-gray-500 leading-relaxed italic">Simule variações táticas livremente no tabuleiro acima para absorver os conceitos industriais.</p>
+              <button 
+                onClick={resetSandbox} 
+                className="w-full py-4 bg-[#81b64c] hover:bg-[#95c65d] rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95"
+              >
+                Reiniciar Simulação
+              </button>
+            </div>
+          </div>
+          
+          <div className="bg-blue-500/5 p-6 rounded-3xl border border-blue-500/10 flex gap-4 items-center">
+            <i className="fas fa-info-circle text-blue-400 text-xl"></i>
+            <p className="text-[10px] text-blue-400/80 uppercase font-bold leading-relaxed">Dica: Movimentos realizados no sandbox não afetam seu ELO global.</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-6xl p-6">
-      <div className="mb-10">
-        <h1 className="text-4xl font-bold mb-2">Aprenda Xadrez</h1>
-        <p className="text-gray-500">Cursos interativos para todos os níveis de habilidade.</p>
+    <div className="w-full max-w-6xl py-10 animate-in fade-in duration-700">
+      <div className="mb-14 border-l-4 border-[#81b64c] pl-8">
+        <h1 className="text-6xl font-black tracking-tighter italic uppercase mb-2">Knowledge Base</h1>
+        <p className="text-gray-500 font-bold uppercase text-xs tracking-[0.3em]">Protocolos de treinamento avançado para operadores pro.</p>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {LESSONS.map(lesson => (
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        {LESSONS.map(l => (
           <div 
-            key={lesson.id} 
-            onClick={() => setSelectedLesson(lesson)}
-            className="group bg-[#262421] p-6 rounded-2xl border border-[#3c3a37] hover:border-[#81b64c]/50 transition-all cursor-pointer shadow-lg hover:-translate-y-1"
+            key={l.id} 
+            onClick={() => startLesson(l)} 
+            className="bg-[#262421] p-10 rounded-[2.5rem] border border-white/5 hover:border-[#81b64c] transition-all cursor-pointer group shadow-xl relative overflow-hidden"
           >
-            <div className="w-14 h-14 bg-[#3c3a37] group-hover:bg-[#81b64c] rounded-xl flex items-center justify-center mb-6 transition-colors">
-              <i className={`fas ${lesson.icon} text-2xl group-hover:text-white`}></i>
+            <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/5 rounded-full blur-3xl group-hover:bg-[#81b64c]/10 transition-colors" />
+            <div className="w-16 h-16 bg-[#3c3a37] group-hover:bg-[#81b64c] rounded-2xl flex items-center justify-center mb-8 transition-all duration-500 shadow-lg group-hover:rotate-12 group-hover:scale-110">
+              <i className={`fas ${l.icon} text-2xl group-hover:text-white transition-colors`}></i>
             </div>
-            <span className="text-[10px] font-bold text-[#81b64c] uppercase tracking-widest">{lesson.category}</span>
-            <h3 className="text-xl font-bold mt-2 mb-3">{lesson.title}</h3>
-            <p className="text-sm text-gray-500 line-clamp-2">{lesson.description}</p>
+            <span className="text-[10px] font-black text-[#81b64c] uppercase tracking-[0.2em]">{l.category}</span>
+            <h3 className="text-2xl font-black mt-4 mb-4 tracking-tight group-hover:text-[#81b64c] transition-colors">{l.title}</h3>
+            <p className="text-sm text-gray-500 leading-relaxed line-clamp-2">{l.description}</p>
+            <div className="mt-8 flex items-center gap-2 text-[#81b64c] text-[10px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity translate-x-4 group-hover:translate-x-0 transition-transform">
+              Acessar Módulo <i className="fas fa-chevron-right ml-1"></i>
+            </div>
           </div>
         ))}
       </div>

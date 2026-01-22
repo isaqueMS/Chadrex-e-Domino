@@ -7,7 +7,7 @@ import Puzzles from './components/Puzzles';
 import Learn from './components/Learn';
 import DominoGame from './components/DominoGame';
 import { Board, Move, Color, GameMode, User, AppView, UserSettings } from './types';
-import { createInitialBoard, makeMove, getGameState, getBestMove, parseFen } from './services/chessLogic';
+import { createInitialBoard, makeMove, getGameState, getBestMove } from './services/chessLogic';
 import { db } from './services/firebase';
 
 const Confetti: React.FC = () => (
@@ -22,21 +22,21 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.has('domino')) return 'dominoes';
+    if (params.has('puzzles')) return 'puzzles';
+    if (params.has('learn')) return 'learn';
     return 'play';
   });
   
   const [currentUser, setCurrentUser] = useState<User>(() => {
-    const saved = localStorage.getItem('chess_profile_v6');
+    const saved = localStorage.getItem('chess_profile_v12');
     if (saved) return JSON.parse(saved);
     const newId = `u_${Math.random().toString(36).substr(2, 9)}`;
     return {
       id: newId,
-      name: `Jogador_${Math.random().toString(36).substr(2, 4)}`,
+      name: `Mestre_${Math.random().toString(36).substr(2, 4)}`,
       elo: 1200,
-      dominoElo: 1200,
       avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${newId}`,
-      lastSeen: Date.now(),
-      settings: { chessTheme: 'green', dominoTheme: 'felt' }
+      settings: { chessTheme: 'green', dominoTheme: 'dark' }
     };
   });
 
@@ -48,269 +48,359 @@ const App: React.FC = () => {
   const [gameOver, setGameOver] = useState<string | null>(null);
   const [timers, setTimers] = useState({ w: 600, b: 600 });
   const [gameMode, setGameMode] = useState<GameMode>(GameMode.LOCAL);
-  const [onlineRoom, setOnlineRoom] = useState<string | null>(null);
   const [playerColor, setPlayerColor] = useState<Color>('w');
   const [opponent, setOpponent] = useState<User | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [onlineRoom, setOnlineRoom] = useState<string | null>(null);
+  const [botThinking, setBotThinking] = useState(false);
+  const [showBotSelector, setShowBotSelector] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showCelebration, setShowCelebration] = useState(false);
-  const lastProcessedTs = useRef<number>(0);
 
-  // Inicialização e Monitoramento de Salas de Xadrez
+  // Profile Form State
+  const [editName, setEditName] = useState(currentUser.name);
+  const [editAvatar, setEditAvatar] = useState(currentUser.avatar);
+  const [editChessTheme, setEditChessTheme] = useState<UserSettings['chessTheme']>(currentUser.settings?.chessTheme || 'green');
+
+  // Chess Online Room Listener
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const room = params.get('room');
-    if (room) {
-      setOnlineRoom(room);
-      setGameMode(GameMode.ONLINE);
-      joinChessRoom(room);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!onlineRoom) return;
-    const roomRef = db.ref(`rooms/${onlineRoom}`);
+    const roomId = onlineRoom || params.get('room');
     
-    // Escuta movimentos
-    const movesRef = roomRef.child('moves');
-    movesRef.on('child_added', (snap) => {
-      const { move, playerId, timestamp } = snap.val();
-      if (timestamp > lastProcessedTs.current) {
-        lastProcessedTs.current = timestamp;
-        if (playerId !== currentUser.id) {
-          applyMove(move);
-        }
-      }
-    });
-
-    // Escuta jogadores
-    roomRef.child('players').on('value', snap => {
-      const players = snap.val();
-      if (players) {
-        const opp = Object.values(players).find((p: any) => p.id !== currentUser.id) as User;
-        if (opp) setOpponent(opp);
-      }
-    });
-
-    // Escuta chat
-    roomRef.child('chat').on('value', snap => {
-      if (snap.exists()) setMessages(Object.values(snap.val()));
-    });
-
-    return () => {
-      movesRef.off();
-      roomRef.child('players').off();
-      roomRef.child('chat').off();
-    };
-  }, [onlineRoom, currentUser.id]);
-
-  const createChessRoom = () => {
-    const id = Math.random().toString(36).substring(2, 9);
-    const roomData = {
-      id,
-      status: 'waiting',
-      players: { [currentUser.id]: currentUser },
-      createdAt: Date.now()
-    };
-    db.ref(`rooms/${id}`).set(roomData).then(() => {
-      setOnlineRoom(id);
-      setPlayerColor('w');
-      setGameMode(GameMode.ONLINE);
-      window.history.replaceState(null, '', `?room=${id}`);
-    });
-  };
-
-  const joinChessRoom = (id: string) => {
-    const roomRef = db.ref(`rooms/${id}`);
-    roomRef.once('value').then(snap => {
-      const data = snap.val();
-      if (!data) return;
-      const players = data.players || {};
-      const playerList = Object.values(players);
+    if (roomId && currentView === 'play') {
+      const roomRef = db.ref(`chess_rooms/${roomId}`);
       
-      if (!players[currentUser.id] && playerList.length < 2) {
-        roomRef.child(`players/${currentUser.id}`).set(currentUser);
-        setPlayerColor('b'); // Segundo a entrar é Pretas
-      } else if (players[currentUser.id]) {
-        // Re-entrada, descobre a cor original
-        const isFirst = Object.keys(players)[0] === currentUser.id;
-        setPlayerColor(isFirst ? 'w' : 'b');
-      }
-    });
-  };
+      const onValue = (snap: any) => {
+        const val = snap.val();
+        if (val) {
+          if (val.board) {
+            boardRef.current = val.board;
+            setBoard([...val.board]);
+          }
+          if (val.turn) setTurn(val.turn);
+          if (val.history) {
+            historyRef.current = val.history;
+            setHistory([...val.history]);
+          }
+          if (val.gameOver) setGameOver(val.gameOver);
+          
+          const players = val.players || {};
+          const playerIds = Object.keys(players);
+          const otherId = playerIds.find(id => id !== currentUser.id);
+          if (otherId) setOpponent(players[otherId]);
+          
+          if (!val.creatorId) roomRef.update({ creatorId: currentUser.id });
+          setPlayerColor(val.creatorId === currentUser.id ? 'w' : 'b');
+          setGameMode(GameMode.ONLINE);
+          setOnlineRoom(roomId);
+        }
+      };
+
+      roomRef.on('value', onValue);
+      roomRef.child('players').child(currentUser.id).set(currentUser);
+
+      return () => roomRef.off('value', onValue);
+    }
+  }, [onlineRoom, currentUser, currentView]);
 
   const applyMove = useCallback((move: Move) => {
     try {
       const newBoard = makeMove(boardRef.current, move);
       boardRef.current = newBoard;
-      historyRef.current.push(move);
-      setBoard([...newBoard]);
-      setHistory([...historyRef.current]);
-      setTurn(move.piece.color === 'w' ? 'b' : 'w');
+      const newHistory = [...historyRef.current, move];
+      historyRef.current = newHistory;
       
-      const state = getGameState(newBoard, move.piece.color === 'w' ? 'b' : 'w');
-      if (state === 'checkmate') {
-        setGameOver(`Xeque-mate! Vitória das ${move.piece.color === 'w' ? 'Brancas' : 'Pretas'}`);
-        if (move.piece.color === playerColor) {
-          setShowCelebration(true);
-          updateElo(25);
-        }
-      } else if (state === 'stalemate') {
-        setGameOver('Empate por afogamento.');
-      }
-      return true;
-    } catch (e) { return false; }
-  }, [playerColor]);
+      const nextTurn = move.piece.color === 'w' ? 'b' : 'w';
+      const state = getGameState(newBoard, nextTurn);
+      let endMsg = null;
 
-  const updateElo = (amount: number) => {
-    const newElo = (currentUser.elo || 1200) + amount;
-    const updated = { ...currentUser, elo: newElo };
-    setCurrentUser(updated);
-    db.ref(`users/${currentUser.id}`).update({ elo: newElo });
-    localStorage.setItem('chess_profile_v6', JSON.stringify(updated));
+      if (state === 'checkmate') {
+        endMsg = `Xeque-mate! Vitória das ${move.piece.color === 'w' ? 'Brancas' : 'Pretas'}`;
+      } else if (state === 'stalemate') {
+        endMsg = 'Empate por afogamento.';
+      }
+
+      if (gameMode === GameMode.ONLINE && onlineRoom) {
+        db.ref(`chess_rooms/${onlineRoom}`).update({
+          board: newBoard,
+          turn: nextTurn,
+          history: newHistory,
+          gameOver: endMsg
+        });
+      } else {
+        setBoard([...newBoard]);
+        setHistory(newHistory);
+        setTurn(nextTurn);
+        if (endMsg) setGameOver(endMsg);
+      }
+
+      if (endMsg && move.piece.color === playerColor) setShowCelebration(true);
+      return true;
+    } catch (e) { 
+      console.error("Move application error", e);
+      return false; 
+    }
+  }, [gameMode, onlineRoom, playerColor]);
+
+  const handleMove = useCallback((move: Move) => {
+    if (gameOver) return;
+    if (gameMode === GameMode.ONLINE && turn !== playerColor) return;
+    if (gameMode === GameMode.AI && turn !== playerColor) return;
+    applyMove(move);
+  }, [gameOver, applyMove, gameMode, turn, playerColor]);
+
+  // AI Bot Execution Flow
+  useEffect(() => {
+    let isMounted = true;
+    if (gameMode === GameMode.AI && turn !== playerColor && !gameOver && !botThinking) {
+      setBotThinking(true);
+      const thinkTimer = setTimeout(() => {
+        if (!isMounted) return;
+        try {
+          const move = getBestMove(boardRef.current, turn, opponent?.elo || 1200);
+          if (move && isMounted) {
+            applyMove(move);
+          }
+        } catch (err) {
+          console.error("Bot Logic Error:", err);
+        } finally {
+          if (isMounted) setBotThinking(false);
+        }
+      }, 800); // Slightly faster thinking
+      return () => { isMounted = false; clearTimeout(thinkTimer); };
+    }
+  }, [turn, gameMode, playerColor, gameOver, botThinking, applyMove, opponent]);
+
+  const createOnlineRoom = () => {
+    const id = Math.random().toString(36).substr(2, 6).toUpperCase();
+    const url = `${window.location.origin}${window.location.pathname}?room=${id}`;
+    window.history.replaceState(null, '', url);
+    setOnlineRoom(id);
+    setGameMode(GameMode.ONLINE);
+    db.ref(`chess_rooms/${id}`).set({
+      creatorId: currentUser.id,
+      board: createInitialBoard(),
+      turn: 'w',
+      history: [],
+      players: { [currentUser.id]: currentUser }
+    });
   };
 
-  const handleMove = (move: Move) => {
-    if (gameOver) return;
-    if (gameMode === GameMode.ONLINE) {
-      if (turn !== playerColor || !onlineRoom) return;
-      const ts = Date.now();
-      lastProcessedTs.current = ts;
-      if (applyMove(move)) {
-        db.ref(`rooms/${onlineRoom}/moves`).push({ move, playerId: currentUser.id, timestamp: ts });
-      }
-    } else {
-      applyMove(move);
-    }
+  const startAiGame = (bot: any) => {
+    resetGame();
+    setGameMode(GameMode.AI);
+    setOpponent({ ...bot, id: `bot_${bot.elo}` });
+    setShowBotSelector(false);
   };
 
   const resetGame = () => {
     boardRef.current = createInitialBoard();
     historyRef.current = [];
-    setBoard(boardRef.current);
+    setBoard([...boardRef.current]);
     setHistory([]);
     setTurn('w');
     setGameOver(null);
-    setOnlineRoom(null);
     setGameMode(GameMode.LOCAL);
-    window.history.replaceState(null, '', window.location.origin);
+    setOnlineRoom(null);
+    setOpponent(null);
+    setBotThinking(false);
+    setShowCelebration(false);
+    window.history.replaceState(null, '', window.location.pathname);
+  };
+
+  const saveProfileChanges = () => {
+    const newUser = { 
+      ...currentUser, 
+      name: editName, 
+      avatar: editAvatar,
+      settings: {
+        ...currentUser.settings,
+        chessTheme: editChessTheme
+      }
+    };
+    setCurrentUser(newUser);
+    localStorage.setItem('chess_profile_v12', JSON.stringify(newUser));
+    setShowProfileModal(false);
+  };
+
+  const generateNewAvatar = () => {
+    const newSeed = Math.random().toString(36).substr(2, 7);
+    setEditAvatar(`https://api.dicebear.com/7.x/avataaars/svg?seed=${newSeed}`);
   };
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-[#312e2b] text-white overflow-hidden">
-      <Sidebar user={currentUser} onProfileClick={() => setShowProfileModal(true)} onRankingClick={() => {}} currentView={currentView} onViewChange={setCurrentView} />
+      <Sidebar 
+        user={currentUser} 
+        onProfileClick={() => { 
+          setEditName(currentUser.name); 
+          setEditAvatar(currentUser.avatar); 
+          setEditChessTheme(currentUser.settings?.chessTheme || 'green');
+          setShowProfileModal(true); 
+        }} 
+        onRankingClick={() => {}} 
+        currentView={currentView} 
+        onViewChange={setCurrentView} 
+      />
       {showCelebration && <Confetti />}
       
-      <main className="flex-1 flex flex-col items-center overflow-y-auto pt-2 sm:pt-4 px-2 custom-scrollbar">
+      <main className="flex-1 flex flex-col items-center overflow-y-auto pt-4 md:pt-8 px-4 custom-scrollbar">
         {currentView === 'play' && (
-          <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 w-full max-w-6xl items-center lg:items-start pb-24 md:pb-6">
-            <div className="w-full max-w-[600px] flex flex-col gap-2 relative">
-              {/* Painel Adversário */}
-              <div className="flex justify-between items-center px-3 py-2 bg-[#262421]/60 rounded-xl border border-white/5 shadow-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-[#3c3a37] rounded-lg overflow-hidden flex items-center justify-center border border-white/10 shadow-inner">
-                    {opponent ? <img src={opponent.avatar} className="w-full h-full" /> : <i className="fas fa-robot text-gray-400 text-sm"></i>}
+          <div className="flex flex-col lg:flex-row gap-8 w-full max-w-[1200px] items-start pb-24 md:pb-12">
+            <div className="flex-1 w-full max-w-[640px] flex flex-col gap-4">
+              {/* Opponent UI */}
+              <div className="flex items-center justify-between px-4 py-3 bg-[#262421] rounded-xl border border-white/5 shadow-lg">
+                <div className="flex items-center gap-4">
+                  <div className="relative w-12 h-12 bg-[#3c3a37] rounded-lg overflow-hidden border border-white/10 ring-2 ring-transparent">
+                    {opponent ? <img src={opponent.avatar} className="w-full h-full object-cover" alt="opponent" /> : <div className="w-full h-full flex items-center justify-center"><i className="fas fa-robot text-gray-500"></i></div>}
+                    {botThinking && (
+                      <div className="absolute inset-0 bg-[#81b64c]/30 flex items-center justify-center backdrop-blur-sm">
+                        <i className="fas fa-microchip text-white text-base animate-spin"></i>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <div className="font-black text-sm">{opponent?.name || (gameMode === GameMode.ONLINE ? 'Aguardando...' : 'Stockfish')}</div>
-                    <div className="text-[9px] text-gray-500 font-bold uppercase leading-none tracking-widest">ELO {opponent?.elo || 1200}</div>
-                  </div>
-                </div>
-                <div className={`px-4 py-1.5 rounded-lg font-mono text-xl ${turn !== playerColor && !gameOver ? 'bg-[#81b64c] text-white' : 'bg-[#1a1917] text-gray-500'} shadow-md transition-colors`}>
-                  {Math.floor(timers[playerColor==='w'?'b':'w']/60)}:{(timers[playerColor==='w'?'b':'w']%60).toString().padStart(2,'0')}
-                </div>
-              </div>
-              
-              <ChessBoard board={board} onMove={handleMove} turn={turn} isFlipped={playerColor==='b'} lastMove={history.length>0?history[history.length-1]:null} gameOver={!!gameOver} settings={currentUser.settings} />
-              
-              {/* Painel Usuário */}
-              <div className="flex justify-between items-center px-3 py-2 bg-[#262421]/60 rounded-xl border border-white/5 shadow-lg">
-                <div className="flex items-center gap-3">
-                  <img src={currentUser.avatar} className="w-9 h-9 rounded-lg border border-[#81b64c] shadow-lg" />
-                  <div>
-                    <div className="font-black text-sm">{currentUser.name} <span className="text-[10px] text-[#81b64c] ml-1">VOCÊ</span></div>
-                    <div className="text-[9px] text-[#81b64c] font-bold uppercase leading-none tracking-widest">ELO {currentUser.elo}</div>
+                  <div className="flex flex-col">
+                    <h3 className="font-bold text-base truncate max-w-[150px]">{opponent?.name || (gameMode === GameMode.ONLINE ? 'Aguardando oponente...' : 'Treinamento')}</h3>
+                    <div className="text-[10px] font-black uppercase tracking-tighter text-gray-500">
+                      {botThinking ? <span className="text-[#81b64c] animate-pulse">Pensando...</span> : `ELO ${opponent?.elo || '?'}`}
+                    </div>
                   </div>
                 </div>
-                <div className={`px-4 py-1.5 rounded-lg font-mono text-xl ${turn === playerColor && !gameOver ? 'bg-[#81b64c] text-white' : 'bg-[#1a1917] text-gray-500'} shadow-md transition-colors`}>
-                  {Math.floor(timers[playerColor]/60)}:{(timers[playerColor]%60).toString().padStart(2,'0')}
-                </div>
+                <div className={`px-5 py-2 rounded-lg font-mono text-2xl font-bold transition-colors ${turn !== playerColor && !gameOver ? 'bg-[#81b64c] text-white shadow-[0_0_15px_rgba(129,182,76,0.3)]' : 'bg-[#1a1917] text-gray-500'}`}>10:00</div>
               </div>
 
-              {gameOver && (
-                <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl p-6 text-center animate-in fade-in">
-                  <h2 className="text-4xl font-black mb-4 text-[#81b64c] tracking-tighter italic uppercase">Fim de Jogo</h2>
-                  <p className="text-xl mb-8 font-bold text-gray-300">{gameOver}</p>
-                  <button onClick={resetGame} className="bg-[#81b64c] px-12 py-4 rounded-2xl font-black text-xl shadow-[0_6px_0_#456528] active:translate-y-1 transition-all">NOVA PARTIDA</button>
+              {/* Board Stage */}
+              <div className="relative p-1 bg-[#262421] rounded-md shadow-2xl border border-white/5">
+                <ChessBoard 
+                  board={board} 
+                  onMove={handleMove} 
+                  turn={turn} 
+                  isFlipped={playerColor==='b'} 
+                  lastMove={history.length>0?history[history.length-1]:null} 
+                  gameOver={!!gameOver} 
+                  settings={currentUser.settings} 
+                />
+                
+                {gameOver && (
+                  <div className="absolute inset-0 z-50 bg-[#1a1917]/95 backdrop-blur-md flex flex-col items-center justify-center p-8 text-center animate-in zoom-in duration-300">
+                    <h2 className="text-4xl md:text-5xl font-black mb-4 text-[#81b64c] tracking-tighter uppercase italic drop-shadow-lg">Fim de Jogo</h2>
+                    <p className="text-lg md:text-xl mb-10 font-medium text-gray-300 max-w-sm">{gameOver}</p>
+                    <button onClick={resetGame} className="bg-[#81b64c] hover:bg-[#95c65d] px-12 md:px-16 py-4 md:py-5 rounded-xl font-black text-lg md:text-xl shadow-[0_6px_0_#456528] active:translate-y-1">NOVA PARTIDA</button>
+                  </div>
+                )}
+
+                {showBotSelector && (
+                  <div className="absolute inset-0 z-50 bg-[#1a1917]/95 backdrop-blur-xl flex flex-col items-center justify-center p-8 animate-in slide-in-from-bottom-10">
+                    <h2 className="text-2xl md:text-3xl font-black mb-10 text-white italic uppercase tracking-tight">Desafie a IA</h2>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md">
+                      {[
+                        { elo: 800, name: 'Lucas', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=lucas' },
+                        { elo: 1600, name: 'Sofia', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=sofia' },
+                        { elo: 2400, name: 'Marco', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=marco' },
+                        { elo: 3200, name: 'Alpha', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=alpha' }
+                      ].map(bot => (
+                        <button key={bot.elo} onClick={() => startAiGame(bot)} className="bg-[#262421] p-4 md:p-5 rounded-2xl border border-white/5 hover:border-[#81b64c] flex items-center gap-4 group transition-all">
+                          <img src={bot.avatar} className="w-12 h-12 md:w-14 md:h-14 rounded-xl shadow-md group-hover:scale-105" alt="bot" />
+                          <div className="text-left">
+                            <div className="font-bold text-white group-hover:text-[#81b64c]">{bot.name}</div>
+                            <div className="text-[10px] text-gray-500 font-black uppercase">ELO {bot.elo}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setShowBotSelector(false)} className="mt-10 text-gray-500 hover:text-white uppercase text-[10px] font-bold tracking-[0.2em]">Cancelar</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Player UI */}
+              <div className="flex items-center justify-between px-4 py-3 bg-[#262421] rounded-xl border border-white/5 shadow-lg">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-[#81b64c]/10 rounded-lg overflow-hidden border border-[#81b64c]/30">
+                    <img src={currentUser.avatar} className="w-full h-full object-cover" alt="me" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base">{currentUser.name}</h3>
+                    <div className="text-[10px] font-black uppercase text-[#81b64c]">ELO {currentUser.elo}</div>
+                  </div>
                 </div>
-              )}
+                <div className={`px-5 py-2 rounded-lg font-mono text-2xl font-bold transition-colors ${turn === playerColor && !gameOver ? 'bg-[#81b64c] text-white shadow-[0_0_15px_rgba(129,182,76,0.3)]' : 'bg-[#1a1917] text-gray-500'}`}>10:00</div>
+              </div>
             </div>
             
-            <div className="w-full lg:w-[380px] h-[450px] lg:h-[580px]">
+            <div className="w-full lg:w-[420px] sticky top-8">
               <GameControls 
                 history={history} 
                 onUndo={resetGame} 
-                onResign={() => setGameOver('Você abandonou a partida.')} 
+                onResign={() => setGameOver('Partida abandonada.')} 
                 turn={turn} 
                 whiteTimer={timers.w} 
                 blackTimer={timers.b} 
                 gameMode={gameMode} 
-                messages={messages} 
-                onlineRoom={onlineRoom} 
-                onSendMessage={t => onlineRoom && db.ref(`rooms/${onlineRoom}/chat`).push({user: currentUser.name, text: t, timestamp: Date.now()})}
-                onCreateOnline={createChessRoom}
+                onPlayBot={() => setShowBotSelector(true)} 
+                onlineRoom={onlineRoom}
+                onCreateOnline={createOnlineRoom}
               />
             </div>
           </div>
         )}
         
-        {currentView === 'puzzles' && <div className="pb-24 md:pb-6 w-full max-w-6xl"><Puzzles /></div>}
-        {currentView === 'learn' && <div className="pb-24 md:pb-6 w-full max-w-6xl"><Learn /></div>}
+        {currentView === 'puzzles' && <Puzzles />}
+        {currentView === 'learn' && <Learn />}
         {currentView === 'dominoes' && <DominoGame currentUser={currentUser} />}
+      </main>
 
-        {/* Modal de Configurações */}
-        {showProfileModal && (
-          <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[200] p-4 backdrop-blur-md">
-            <div className="bg-[#262421] p-8 rounded-[2.5rem] w-full max-w-2xl border border-white/10 shadow-2xl">
-              <div className="flex justify-between items-center mb-10">
-                <h2 className="text-3xl font-black italic tracking-tighter text-[#81b64c]">CONFIGURAÇÕES</h2>
-                <button onClick={() => setShowProfileModal(false)} className="text-gray-500 hover:text-white"><i className="fas fa-times text-2xl"></i></button>
+      {/* Profile Modal */}
+      {showProfileModal && (
+        <div className="fixed inset-0 z-[300] bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in duration-300 overflow-y-auto">
+          <div className="bg-[#262421] w-full max-w-md rounded-[2.5rem] border border-white/5 overflow-hidden shadow-2xl my-8">
+            <div className="h-32 bg-gradient-to-r from-[#81b64c] to-[#779556] relative">
+              <div className="absolute -bottom-10 left-8 flex items-end gap-4">
+                <img src={editAvatar} className="w-24 h-24 rounded-3xl bg-[#262421] p-1 border border-white/10 shadow-xl" alt="preview" />
+                <button onClick={generateNewAvatar} className="bg-white/10 hover:bg-white/20 p-2 rounded-xl text-white backdrop-blur-md mb-2 transition-colors">
+                  <i className="fas fa-random"></i>
+                </button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                <div className="space-y-6">
-                    <div className="flex flex-col items-center gap-6 bg-[#1a1917] p-8 rounded-3xl border border-white/5">
-                      <img src={currentUser.avatar} className="w-24 h-24 rounded-2xl border-2 border-[#81b64c] shadow-2xl" />
-                      <button onClick={() => setCurrentUser({...currentUser, avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${Math.random()}`})} className="bg-[#3c3a37] px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-[#81b64c] transition-all">Trocar Avatar</button>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black uppercase text-gray-500 tracking-widest ml-1">Nickname</label>
-                      <input value={currentUser.name} onChange={e => setCurrentUser({...currentUser, name: e.target.value})} className="w-full bg-[#1a1917] border border-white/5 p-4 rounded-2xl outline-none focus:border-[#81b64c] font-black text-sm" />
-                    </div>
-                </div>
-                <div className="space-y-8">
-                    <div>
-                        <label className="text-[10px] font-black uppercase text-[#81b64c] tracking-[0.2em] block mb-4">Tabuleiro Xadrez</label>
-                        <div className="grid grid-cols-2 gap-3">
-                            {['green', 'wood', 'blue', 'gray'].map(t => (
-                                <button key={t} onClick={() => setCurrentUser({...currentUser, settings: {...currentUser.settings!, chessTheme: t as any}})} className={`py-3 rounded-xl border font-black text-[10px] uppercase transition-all ${currentUser.settings?.chessTheme === t ? 'bg-[#81b64c] border-[#81b64c] text-white shadow-lg' : 'bg-[#1a1917] border-white/5 text-gray-500 hover:border-white/20'}`}>{t}</button>
-                            ))}
-                        </div>
-                    </div>
-                    <div>
-                        <label className="text-[10px] font-black uppercase text-[#81b64c] tracking-[0.2em] block mb-4">Mesa Dominó</label>
-                        <div className="grid grid-cols-2 gap-3">
-                            {['felt', 'wood', 'dark', 'blue'].map(t => (
-                                <button key={t} onClick={() => setCurrentUser({...currentUser, settings: {...currentUser.settings!, dominoTheme: t as any}})} className={`py-3 rounded-xl border font-black text-[10px] uppercase transition-all ${currentUser.settings?.dominoTheme === t ? 'bg-[#81b64c] border-[#81b64c] text-white shadow-lg' : 'bg-[#1a1917] border-white/5 text-gray-500 hover:border-white/20'}`}>{t}</button>
-                            ))}
-                        </div>
-                    </div>
+            </div>
+            <div className="pt-16 px-8 pb-10 space-y-8">
+              <div>
+                <label className="text-[10px] font-black uppercase text-gray-500 mb-2 block tracking-widest">Seu Nickname</label>
+                <input 
+                  type="text" 
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full bg-[#1a1917] border border-white/5 rounded-2xl px-5 py-4 outline-none focus:ring-1 focus:ring-[#81b64c] transition-all font-bold text-white shadow-inner"
+                  placeholder="Nickname"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase text-gray-500 mb-4 block tracking-widest">Tema do Tabuleiro</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {(['green', 'wood', 'blue', 'gray'] as const).map((theme) => (
+                    <button
+                      key={theme}
+                      onClick={() => setEditChessTheme(theme)}
+                      className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${editChessTheme === theme ? 'bg-[#81b64c]/10 border-[#81b64c]' : 'bg-[#1a1917] border-white/5 hover:bg-white/5'}`}
+                    >
+                      <div className={`w-8 h-8 rounded-md shadow-inner ${
+                        theme === 'green' ? 'bg-[#779556]' : 
+                        theme === 'wood' ? 'bg-[#966f33]' : 
+                        theme === 'blue' ? 'bg-[#8ca2ad]' : 'bg-[#a0a0a0]'
+                      }`}></div>
+                      <span className="text-[10px] font-black uppercase tracking-wider">{theme === 'green' ? 'Verde' : theme === 'wood' ? 'Madeira' : theme === 'blue' ? 'Azul' : 'Cinza'}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
-              <button onClick={() => { setShowProfileModal(false); localStorage.setItem('chess_profile_v6', JSON.stringify(currentUser)); }} className="w-full bg-[#81b64c] py-5 rounded-2xl font-black text-xl mt-10 shadow-[0_8px_0_#456528] active:translate-y-1 transition-all">SALVAR ALTERAÇÕES</button>
+
+              <div className="flex gap-3 pt-4">
+                <button onClick={saveProfileChanges} className="flex-1 bg-[#81b64c] hover:bg-[#95c65d] py-4 rounded-2xl font-black text-sm uppercase shadow-lg transition-all active:scale-95">Salvar</button>
+                <button onClick={() => setShowProfileModal(false)} className="px-8 bg-[#3c3a37] hover:bg-[#4a4844] py-4 rounded-2xl font-black text-sm uppercase transition-colors">Sair</button>
+              </div>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 };

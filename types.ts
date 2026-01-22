@@ -88,6 +88,7 @@ export interface DominoGameState {
   turnIndex: number;
   board: DominoMove[];
   hands: Record<string, DominoTile[]>;
+  boneyard?: DominoTile[];
   status: 'waiting' | 'playing' | 'finished';
   winnerId?: string;
   chat?: Record<string, DominoChatMessage>;
